@@ -5,17 +5,26 @@
  * License key is stored in mod_noticebanner_license (not in tbladdonmodules).
  * free_max_notices comes from the API response per-key (not editable by customer).
  *
- * Remote endpoint: https://manage.hostingspell.com/api/validate.php
+ * Remote endpoint: https://whmcsapi.hostingspell.com/api/validate.php (DNS-only / grey cloud)
  */
 
 if (!defined('WHMCS')) {
     die('Access Denied');
 }
 
+// Optional: copy noticebanner-license-url.example.php → noticebanner-license-url.php
+// and set a URL that bypasses Cloudflare (e.g. DNS-only subdomain pointing at origin).
+$__nbLicUrlFile = __DIR__ . '/noticebanner-license-url.php';
+if (is_file($__nbLicUrlFile)) {
+    require_once $__nbLicUrlFile;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 define('NB_LICENSE_PRODUCT',     'noticebanner-whmcs');
-define('NB_LICENSE_API_URL',     'https://manage.hostingspell.com/api/validate.php');
+if (!defined('NB_LICENSE_API_URL')) {
+    define('NB_LICENSE_API_URL', 'https://whmcsapi.hostingspell.com/api/validate.php');
+}
 define('NB_LICENSE_CACHE_HOURS', 24);  // re-check every 24 h
 define('NB_LICENSE_GRACE_HOURS', 72);  // keep Pro for 72 h if API unreachable
 define('NB_LICENSE_FREE_CAP',    3);   // default free cap if API hasn't responded yet
@@ -152,6 +161,61 @@ function noticebanner_license_write_cache(array $data): void {
 
 // ─── HTTP POST (cURL preferred — many hosts disable allow_url_fopen for URLs) ─
 
+if (!function_exists('noticebanner_license_is_cloudflare_challenge')) {
+function noticebanner_license_is_cloudflare_challenge(string $raw, int $httpCode): bool {
+    if ($raw === '' || $httpCode < 400) {
+        return false;
+    }
+    $r = strtolower($raw);
+    return (stripos($r, 'just a moment') !== false)
+        || (stripos($r, 'cf-browser-verification') !== false)
+        || (stripos($r, 'cdn-cgi/challenge') !== false)
+        || (stripos($r, 'checking your browser') !== false);
+}
+}
+
+if (!function_exists('noticebanner_license_curl_post_json')) {
+/** @return array{raw:string,http_code:int,errno:int,cerror:string,user_agent:string} */
+function noticebanner_license_curl_post_json(string $url, string $body, string $userAgent): array {
+    $headers = [
+        'Content-Type: application/json',
+        'Content-Length: ' . strlen($body),
+        'User-Agent: ' . $userAgent,
+        'Accept: application/json, text/plain, */*',
+    ];
+    if (stripos($userAgent, 'Mozilla') !== false) {
+        $headers[] = 'Accept-Language: en-US,en;q=0.9';
+    }
+
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_POST           => true,
+        CURLOPT_POSTFIELDS     => $body,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_CONNECTTIMEOUT => 10,
+        CURLOPT_TIMEOUT        => 15,
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_SSL_VERIFYPEER => true,
+        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 3,
+    ]);
+    $raw   = curl_exec($ch);
+    $errno = curl_errno($ch);
+    $cerr  = curl_error($ch);
+    $code  = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    return [
+        'raw'         => ($raw === false) ? '' : (string)$raw,
+        'http_code'   => $code,
+        'errno'       => $errno,
+        'cerror'      => $cerr,
+        'user_agent'  => $userAgent,
+    ];
+}
+}
+
 if (!function_exists('noticebanner_license_http_post_json')) {
 /**
  * POST JSON to URL. Returns diagnostic array; sets decoded payload if JSON is valid.
@@ -169,36 +233,45 @@ function noticebanner_license_http_post_json(string $url, array $payload): array
         'error'               => '',
         'json_ok'             => false,
         'decoded'             => null,
+        'cloudflare_hint'     => '',
+        'retry_note'          => '',
     ];
 
     if (function_exists('curl_init')) {
         $out['transport'] = 'curl';
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_POST           => true,
-            CURLOPT_POSTFIELDS     => $body,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT        => 15,
-            CURLOPT_HTTPHEADER     => [
-                'Content-Type: application/json',
-                'Content-Length: ' . strlen($body),
-                'User-Agent: NoticeBanner-WHMCS/3.1.0',
-            ],
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
-        ]);
-        $raw = curl_exec($ch);
-        $errno = curl_errno($ch);
-        $cerr  = curl_error($ch);
-        $out['http_code'] = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
+        $uaModule = 'NoticeBanner-WHMCS/3.1.0';
+        $uaBrowser = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
-        if ($raw === false || $errno) {
-            $out['error'] = 'cURL error ' . $errno . ': ' . $cerr;
+        $r = noticebanner_license_curl_post_json($url, $body, $uaModule);
+        $out['http_code'] = $r['http_code'];
+        if ($r['errno']) {
+            $out['error'] = 'cURL error ' . $r['errno'] . ': ' . $r['cerror'];
             $out['raw']   = '';
         } else {
-            $out['raw'] = (string)$raw;
+            $out['raw'] = $r['raw'];
+        }
+
+        // Cloudflare "Just a moment…" interstitial — retry once with browser-like UA (helps some configs; JS challenges still need CF bypass).
+        if ($out['raw'] !== '' && noticebanner_license_is_cloudflare_challenge($out['raw'], $out['http_code'])) {
+            $out['cloudflare_hint'] = 'Cloudflare bot/challenge page detected (not valid JSON). '
+                . 'Allow this path in Cloudflare or use a DNS-only API hostname — see noticebanner-license-url.example.php and CLOUDFLARE.txt on the license server.';
+            $r2 = noticebanner_license_curl_post_json($url, $body, $uaBrowser);
+            if (!$r2['errno'] && $r2['raw'] !== '') {
+                $dec2 = json_decode($r2['raw'], true);
+                if (is_array($dec2)) {
+                    $out['raw']         = $r2['raw'];
+                    $out['http_code']   = $r2['http_code'];
+                    $out['retry_note']  = 'Retried with browser User-Agent after Cloudflare-style response.';
+                    $out['json_ok']     = true;
+                    $out['decoded']     = $dec2;
+                    $out['error']       = '';
+                    $out['cloudflare_hint'] = '';
+                } else {
+                    $out['retry_note'] = 'Retried with browser User-Agent; still not JSON (configure Cloudflare bypass — see CLOUDFLARE.txt).';
+                    $out['raw']        = $r2['raw'];
+                    $out['http_code']  = $r2['http_code'];
+                }
+            }
         }
     } elseif (filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
         $out['transport'] = 'file_get_contents';
@@ -232,11 +305,12 @@ function noticebanner_license_http_post_json(string $url, array $payload): array
     }
     $out['raw_preview'] = $preview;
 
-    if ($out['raw'] !== '') {
+    if ($out['raw'] !== '' && !$out['json_ok']) {
         $dec = json_decode($out['raw'], true);
         if (is_array($dec)) {
             $out['json_ok'] = true;
             $out['decoded'] = $dec;
+            $out['error']   = '';
         } else {
             $out['error'] = ($out['error'] ?: '') . ($out['error'] ? ' ' : '') . 'Response is not valid JSON.';
         }
@@ -256,9 +330,15 @@ function noticebanner_license_debug_format(array $dbg): string {
         'HTTP status:      ' . (string)($dbg['http_code'] ?? 0),
         'Error:            ' . ($dbg['error'] ?: '(none)'),
         'JSON parsed:      ' . (($dbg['json_ok'] ?? false) ? 'yes' : 'no'),
-        '--- Response body (preview) ---',
-        $dbg['raw_preview'] ?? '',
     ];
+    if (!empty($dbg['retry_note'])) {
+        $lines[] = 'Retry:            ' . $dbg['retry_note'];
+    }
+    if (!empty($dbg['cloudflare_hint'])) {
+        $lines[] = '>>> ' . $dbg['cloudflare_hint'];
+    }
+    $lines[] = '--- Response body (preview) ---';
+    $lines[] = $dbg['raw_preview'] ?? '';
     return implode("\n", $lines);
 }
 }

@@ -29,27 +29,23 @@ module activate, save notice, client-area banner, poll vote, admin widget.
 
 Outbound HTTPS requirement (IMPORTANT)
 --------------------------------------
-The license engine (license.php) makes an outbound HTTPS POST to:
+The license engine (license.php) makes an outbound HTTPS POST to (default):
 
-  https://hostingspell.com/api/noticebanner-license/v1/validate
+  https://whmcsapi.hostingspell.com/api/validate.php
 
 Customer servers MUST be able to reach this URL over HTTPS (port 443).
-If the server is behind a firewall or has outbound HTTPS blocked, the
-license check will fail. The module will then use the cached state for up
-to 72 hours (grace period) before downgrading to Free tier.
+Optional override: copy noticebanner-license-url.example.php to
+noticebanner-license-url.php in the module folder and define NB_LICENSE_API_URL.
 
-Inform customers of this requirement in your product documentation.
-
-RSA public key
---------------
-The embedded RSA-2048 public key in license.php is used to verify signed
-responses from the HostingSpell API. The private key lives only on
-hostingspell.com and is never distributed. Replace the placeholder key in
-license.php with your real public key before encoding and distributing.
+Cloudflare on the license host
+------------------------------
+If the hostname is proxied through Cloudflare and returns a “Just a moment…”
+HTML page (HTTP 403), server-side PHP cannot complete the JS challenge.
+Fix on Cloudflare: add a WAF skip rule for /api/validate.php, or use a
+DNS-only (grey-cloud) hostname for the API. See noticebanner-license-api/CLOUDFLARE.txt.
 
 Security note
 -------------
 Encoded files do not replace secure coding. This build already avoids trusting
 client POST for identity on acknowledge, validates poll options server-side,
-restricts webhooks to public http(s) URLs to reduce SSRF risk, and verifies
-license responses with RSA-SHA256 signatures before trusting them.
+and restricts webhooks to public http(s) URLs to reduce SSRF risk.
