@@ -618,7 +618,7 @@ if (!class_exists('NoticeBannerHelper')) {
                         $pollHtml .= '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">'
                             . '<span style="font-size:12px;background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-weight:600;">✓ You voted: ' . htmlspecialchars($votedOption ?? '', ENT_NOQUOTES, 'UTF-8') . '</span>'
                             . '<button type="button" id="nb-poll-change-' . $pollNid . '" '
-                            . 'onclick="nbPollReset(this,' . $pollNid . ',' . $pollEntId . ',\'' . $pollEntType . '\')" '
+                            . 'onclick="nbPollReset(this,' . $pollNid . ')" '
                             . 'style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">↺ Change Vote</button>'
                             . '<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">' . $total . ' total vote' . ($total == 1 ? '' : 's') . '</span>'
                             . '</div>';
@@ -758,7 +758,7 @@ function nbPollVote(btn,noticeId){
                 // Swap Vote button for "You voted + Change Vote"
                 var btnWrap=btn.parentNode;
                 btnWrap.innerHTML=\'<span style="font-size:12px;background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-weight:600;">\u2713 You voted: \'+data.voted_option+\'</span>\'
-                    +\'<button type="button" onclick="nbPollReset(this,\'+noticeId+\',0,\'\'auto\'\')" style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">\u21ba Change Vote</button>\'
+                    +\'<button type="button" onclick="nbPollReset(this,\'+noticeId+\')" style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">\u21ba Change Vote</button>\'
                     +\'<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">\'+data.total+\' total vote\'+(data.total===1?"":"s")+\'</span>\';
             } else if(data&&data.already_voted){
                 // Already voted — show current state
@@ -766,7 +766,7 @@ function nbPollVote(btn,noticeId){
                 nbPollApplyResults(wrap,noticeId,data.results,data.total,data.voted_option);
                 var btnWrap=btn.parentNode;
                 btnWrap.innerHTML=\'<span style="font-size:12px;background:#fef9c3;color:#92400e;padding:3px 10px;border-radius:12px;font-weight:600;">You already voted: \'+data.voted_option+\'</span>\'
-                    +\'<button type="button" onclick="nbPollReset(this,\'+noticeId+\',0,\'\'auto\'\')" style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">\u21ba Change Vote</button>\'
+                    +\'<button type="button" onclick="nbPollReset(this,\'+noticeId+\')" style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">\u21ba Change Vote</button>\'
                     +\'<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">\'+data.total+\' total vote\'+(data.total===1?"":"s")+\'</span>\';
             } else {
                 btn.disabled=false;
@@ -778,7 +778,7 @@ function nbPollVote(btn,noticeId){
             btn.textContent="Vote";
         });
 }
-function nbPollReset(btn,noticeId,entityId,entityType){
+function nbPollReset(btn,noticeId){
     btn.disabled=true;
     btn.textContent="Resetting\u2026";
     var fd=new FormData();
