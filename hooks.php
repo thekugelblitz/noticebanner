@@ -33,32 +33,26 @@ if (!class_exists('NoticeBannerHelper')) {
 
         // ── Minimal Markdown → HTML ──────────────────────────────────────────
         public static function parseMarkdown(string $text): string {
-            // Escape HTML first, then selectively apply markdown
             $t = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
 
-            // Headings
             $t = preg_replace('/^### (.+)$/m', '<h5 style="margin:8px 0 4px;">$1</h5>', $t);
             $t = preg_replace('/^## (.+)$/m',  '<h4 style="margin:10px 0 4px;">$1</h4>', $t);
             $t = preg_replace('/^# (.+)$/m',   '<h3 style="margin:12px 0 4px;">$1</h3>', $t);
 
-            // Bold / italic
             $t = preg_replace('/\*\*\*(.+?)\*\*\*/s', '<strong><em>$1</em></strong>', $t);
             $t = preg_replace('/\*\*(.+?)\*\*/s',     '<strong>$1</strong>', $t);
             $t = preg_replace('/\*(.+?)\*/s',          '<em>$1</em>', $t);
             $t = preg_replace('/__(.+?)__/s',          '<strong>$1</strong>', $t);
             $t = preg_replace('/_(.+?)_/s',            '<em>$1</em>', $t);
 
-            // Inline code
             $t = preg_replace('/`(.+?)`/', '<code style="background:rgba(0,0,0,0.08);padding:1px 5px;border-radius:3px;font-size:0.9em;">$1</code>', $t);
 
-            // Links  [text](url)
             $t = preg_replace(
                 '/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/',
                 '<a href="$2" target="_blank" rel="noopener noreferrer" style="text-decoration:underline;">$1</a>',
                 $t
             );
 
-            // Unordered lists  (lines starting with - or *)
             $t = preg_replace_callback('/(?:^[-*] .+\n?)+/m', function ($m) {
                 $items = preg_split('/\n/', trim($m[0]));
                 $li = '';
@@ -69,7 +63,6 @@ if (!class_exists('NoticeBannerHelper')) {
                 return '<ul style="margin:6px 0 6px 18px;padding:0;">' . $li . '</ul>';
             }, $t);
 
-            // Ordered lists
             $t = preg_replace_callback('/(?:^\d+\. .+\n?)+/m', function ($m) {
                 $items = preg_split('/\n/', trim($m[0]));
                 $li = '';
@@ -80,16 +73,9 @@ if (!class_exists('NoticeBannerHelper')) {
                 return '<ol style="margin:6px 0 6px 18px;padding:0;">' . $li . '</ol>';
             }, $t);
 
-            // Blockquote
             $t = preg_replace('/^&gt; (.+)$/m', '<blockquote style="border-left:3px solid #ccc;margin:6px 0;padding:2px 10px;color:#555;">$1</blockquote>', $t);
-
-            // Horizontal rule
             $t = preg_replace('/^---+$/m', '<hr style="border:none;border-top:1px solid #ddd;margin:10px 0;">', $t);
-
-            // Line breaks
             $t = nl2br($t);
-
-            // @mention highlight  (already-escaped so @word)
             $t = preg_replace('/@(\w+)/', '<span style="background:rgba(99,102,241,0.15);color:#4f46e5;border-radius:3px;padding:0 3px;font-weight:600;">@$1</span>', $t);
 
             return $t;
@@ -98,22 +84,18 @@ if (!class_exists('NoticeBannerHelper')) {
         // ── Priority badge ───────────────────────────────────────────────────
         private static function priorityBadge(string $priority): string {
             $map = [
-                'critical' => ['#dc2626', '#fff',    '🔴 Critical'],
-                'high'     => ['#f97316', '#fff',    '🟠 High'],
-                'normal'   => ['#2563eb', '#fff',    '🔵 Normal'],
-                'low'      => ['#6b7280', '#fff',    '⚪ Low'],
+                'critical' => ['#dc2626', '#fff', '🔴 Critical'],
+                'high'     => ['#f97316', '#fff', '🟠 High'],
+                'normal'   => ['#2563eb', '#fff', '🔵 Normal'],
+                'low'      => ['#6b7280', '#fff', '⚪ Low'],
             ];
             [$bg, $fg, $label] = $map[$priority] ?? $map['normal'];
             return '<span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:11px;font-weight:700;background:' . $bg . ';color:' . $fg . ';margin-left:8px;vertical-align:middle;">' . $label . '</span>';
         }
 
-        // ── Get current admin ID from session ────────────────────────────────
+        // ── Get current admin ID ─────────────────────────────────────────────
         private static function currentAdminId(): int {
-            // WHMCS stores the logged-in admin ID in $_SESSION['adminid']
-            if (!empty($_SESSION['adminid'])) {
-                return (int)$_SESSION['adminid'];
-            }
-            // Fallback: try the Capsule-based auth object
+            if (!empty($_SESSION['adminid'])) return (int)$_SESSION['adminid'];
             if (class_exists('\WHMCS\Authentication\CurrentUser')) {
                 try {
                     $user = \WHMCS\Authentication\CurrentUser::adminUser();
@@ -121,6 +103,26 @@ if (!class_exists('NoticeBannerHelper')) {
                 } catch (\Exception $e) {}
             }
             return 0;
+        }
+
+        // ── Get current client ID ────────────────────────────────────────────
+        private static function currentClientId(): int {
+            if (!empty($_SESSION['uid'])) return (int)$_SESSION['uid'];
+            return 0;
+        }
+
+        // ── Get current client's group ID ────────────────────────────────────
+        private static function currentClientGroupId(): int {
+            $uid = self::currentClientId();
+            if (!$uid) return 0;
+            try {
+                $row = \WHMCS\Database\Capsule::table('tblclients')
+                    ->where('id', $uid)
+                    ->value('groupid');
+                return (int)($row ?? 0);
+            } catch (\Exception $e) {
+                return 0;
+            }
         }
 
         // ── Resolve admin names from IDs ─────────────────────────────────────
@@ -141,15 +143,33 @@ if (!class_exists('NoticeBannerHelper')) {
             }
         }
 
+        // ── Check if entity has already acknowledged a notice ────────────────
+        private static function hasAcknowledged(int $noticeId, string $type, int $entityId): bool {
+            if (!$entityId) return false;
+            try {
+                return \WHMCS\Database\Capsule::table('mod_noticebanner_reads')
+                    ->where('notice_id', $noticeId)
+                    ->where('entity_type', $type)
+                    ->where('entity_id', $entityId)
+                    ->exists();
+            } catch (\Exception $e) {
+                return false;
+            }
+        }
+
         // ── Main render ──────────────────────────────────────────────────────
         public static function renderNotices(string $area): string {
             if (!empty(self::$rendered[$area])) return '';
             self::$rendered[$area] = true;
 
-            $notices = function_exists('noticebanner_get_notices') ? noticebanner_get_notices() : [];
+            // Use rendering mode — applies expiry + publish_at filters
+            $notices = function_exists('noticebanner_get_notices') ? noticebanner_get_notices(true) : [];
             if (empty($notices)) return '';
 
-            $currentAdminId = ($area === 'admin') ? self::currentAdminId() : 0;
+            $currentAdminId  = ($area === 'admin')  ? self::currentAdminId()       : 0;
+            $currentClientId = ($area === 'client') ? self::currentClientId()      : 0;
+            $currentGroupId  = ($area === 'client') ? self::currentClientGroupId() : 0;
+            $requestUri      = $_SERVER['REQUEST_URI'] ?? '';
 
             $html = '';
             foreach ($notices as $n) {
@@ -158,13 +178,33 @@ if (!class_exists('NoticeBannerHelper')) {
                      || ($area === 'client' && !empty($n['show_to_clients']));
                 if (!$show) continue;
 
-                // ── Assigned-admin gate (admin area only) ──
-                // If the notice has specific assigned admins, only those admins see it.
+                // ── Assigned-admin gate ──
                 $assignedAdmins = $n['assigned_admins'] ?? [];
                 if ($area === 'admin' && !empty($assignedAdmins)) {
                     if ($currentAdminId === 0 || !in_array($currentAdminId, $assignedAdmins, true)) {
                         continue;
                     }
+                }
+
+                // ── Client group gate ──
+                $clientGroups = $n['client_groups'] ?? [];
+                if ($area === 'client' && !empty($clientGroups)) {
+                    if ($currentGroupId === 0 || !in_array($currentGroupId, $clientGroups, true)) {
+                        continue;
+                    }
+                }
+
+                // ── Page slug gate (client only) ──
+                $pageSlugs = $n['page_slugs'] ?? [];
+                if ($area === 'client' && !empty($pageSlugs)) {
+                    $matched = false;
+                    foreach ($pageSlugs as $pattern) {
+                        if (fnmatch($pattern, $requestUri) || strpos($requestUri, $pattern) !== false) {
+                            $matched = true;
+                            break;
+                        }
+                    }
+                    if (!$matched) continue;
                 }
 
                 $id       = 'nb_' . $n['id'];
@@ -178,6 +218,11 @@ if (!class_exists('NoticeBannerHelper')) {
                 $title   = htmlspecialchars($n['notice_title'] ?? '');
                 $content = self::parseMarkdown($n['notice_content'] ?? '');
 
+                // ── Pinned indicator ──
+                $pinnedHtml = !empty($n['is_pinned'])
+                    ? '<span style="display:inline-block;padding:1px 7px;border-radius:12px;font-size:10px;font-weight:700;background:#fef9c3;color:#854d0e;margin-left:6px;vertical-align:middle;">📌 Pinned</span>'
+                    : '';
+
                 // ── Timestamp ──
                 $tsHtml = '';
                 if (!empty($n['notice_timestamp'])) {
@@ -186,7 +231,18 @@ if (!class_exists('NoticeBannerHelper')) {
                         . '</span>';
                 }
 
-                // ── Assigned admins footer (shown in banner) ──
+                // ── Tags ──
+                $tagsHtml = '';
+                if (!empty($n['tags'])) {
+                    $tagsHtml = '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
+                    foreach (array_map('trim', explode(',', $n['tags'])) as $tag) {
+                        if ($tag === '') continue;
+                        $tagsHtml .= '<span style="display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:600;background:rgba(99,102,241,0.1);color:#4338ca;">#' . htmlspecialchars($tag) . '</span>';
+                    }
+                    $tagsHtml .= '</div>';
+                }
+
+                // ── Assigned admins footer ──
                 $assignedHtml = '';
                 if ($area === 'admin' && !empty($assignedAdmins)) {
                     $nameMap = self::adminNames($assignedAdmins);
@@ -195,12 +251,30 @@ if (!class_exists('NoticeBannerHelper')) {
                         $name  = $nameMap[$aid] ?? ('Admin #' . $aid);
                         $chips .= '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(99,102,241,0.15);color:#4338ca;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;margin:1px 2px;">'
                             . '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
-                            . htmlspecialchars($name)
-                            . '</span>';
+                            . htmlspecialchars($name) . '</span>';
                     }
                     $assignedHtml = '<div style="margin-top:8px;font-size:12px;opacity:0.75;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">'
                         . '<span style="font-weight:600;margin-right:2px;">Assigned:</span>' . $chips
                         . '</div>';
+                }
+
+                // ── Acknowledge button ──
+                $ackHtml = '';
+                $entityId   = ($area === 'admin') ? $currentAdminId : $currentClientId;
+                $entityType = $area === 'admin' ? 'admin' : 'client';
+                if ($entityId && function_exists('noticebanner_ensure_columns')) {
+                    $acked = self::hasAcknowledged((int)$n['id'], $entityType, $entityId);
+                    if ($acked) {
+                        $ackHtml = '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:6px;background:#dcfce7;color:#166534;font-size:13px;font-weight:600;margin-top:8px;">✓ Acknowledged</span>';
+                    } else {
+                        $ackHtml = '<form method="post" action="" style="display:inline;margin-top:8px;">'
+                            . '<input type="hidden" name="mark_read" value="1">'
+                            . '<input type="hidden" name="mark_read_id" value="' . (int)$n['id'] . '">'
+                            . '<input type="hidden" name="mark_read_type" value="' . $entityType . '">'
+                            . '<input type="hidden" name="mark_read_entity" value="' . $entityId . '">'
+                            . '<button type="submit" style="padding:4px 14px;border-radius:6px;background:#e0e7ff;color:#3730a3;border:none;cursor:pointer;font-size:13px;font-weight:600;">Acknowledge</button>'
+                            . '</form>';
+                    }
                 }
 
                 // ── CTA button ──
@@ -231,15 +305,15 @@ if (!class_exists('NoticeBannerHelper')) {
                 // ── Poll ──
                 $pollHtml = '';
                 if (!empty($n['poll_enabled']) && !empty($n['poll_question']) && !empty($n['poll_options'])) {
-                    $results = $n['poll_results'] ?? [];
-                    $total   = array_sum($results);
+                    $results  = $n['poll_results'] ?? [];
+                    $total    = array_sum($results);
                     $pollHtml = '<div style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,0.04);border-radius:8px;max-width:480px;">'
                         . '<div style="font-weight:600;margin-bottom:8px;">' . htmlspecialchars($n['poll_question']) . '</div>'
                         . '<form method="post" action="">'
                         . '<input type="hidden" name="poll_notice_id" value="' . (int)$n['id'] . '">';
                     foreach ($n['poll_options'] as $opt) {
-                        $votes   = $results[$opt] ?? 0;
-                        $pct     = $total > 0 ? round(($votes / $total) * 100) : 0;
+                        $votes    = $results[$opt] ?? 0;
+                        $pct      = $total > 0 ? round(($votes / $total) * 100) : 0;
                         $pollHtml .= '<label style="display:block;margin-bottom:6px;font-size:14px;">'
                             . '<input type="radio" name="poll_vote" value="' . htmlspecialchars($opt) . '" style="margin-right:6px;">'
                             . htmlspecialchars($opt)
@@ -254,13 +328,15 @@ if (!class_exists('NoticeBannerHelper')) {
                 // ── Body ──
                 $bodyHtml = '<div style="margin-top:10px;font-size:14px;line-height:1.7;max-width:800px;margin-left:auto;margin-right:auto;text-align:left;">'
                     . $content . $btnHtml . $ticketHtml . $pollHtml
-                    . $assignedHtml
+                    . $tagsHtml . $assignedHtml
+                    . '<div>' . $ackHtml . '</div>'
                     . '</div>';
 
                 // ── Banner wrapper ──
                 $headerRow = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">'
                     . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
                     . self::priorityBadge($priority)
+                    . $pinnedHtml
                     . $tsHtml
                     . '</div>';
 

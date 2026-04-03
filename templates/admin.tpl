@@ -14,11 +14,19 @@ $adminMap = [];
 foreach ($admins as $a) {
     $adminMap[$a->id] = $a->firstname . ' ' . $a->lastname;
 }
+
+// ── Client group lookup map ───────────────────────────────────────────────────
+$groupMap = [];
+foreach ($clientGroups as $g) {
+    $groupMap[$g->id] = $g->groupname;
+}
+
+$now = date('Y-m-d H:i:s');
 ?>
 <style>
 /* ── Reset & base ── */
 #nb-wrap * { box-sizing: border-box; }
-#nb-wrap { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1100px; margin: 0 auto; color: #1e293b; }
+#nb-wrap { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 1200px; margin: 0 auto; color: #1e293b; }
 
 /* ── Card ── */
 .nb-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 24px; overflow: hidden; }
@@ -29,7 +37,10 @@ foreach ($admins as $a) {
 /* ── Form grid ── */
 .nb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .nb-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+.nb-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; }
 .nb-span2 { grid-column: span 2; }
+.nb-span3 { grid-column: span 3; }
+.nb-span4 { grid-column: span 4; }
 .nb-field { display: flex; flex-direction: column; gap: 5px; }
 .nb-field label { font-size: 13px; font-weight: 600; color: #475569; }
 .nb-field input[type=text],
@@ -62,6 +73,7 @@ foreach ($admins as $a) {
 .nb-btn-primary:hover { filter: brightness(1.1); }
 .nb-btn-success { background: #10b981; color: #fff; }
 .nb-btn-danger { background: #ef4444; color: #fff; }
+.nb-btn-warning { background: #f59e0b; color: #fff; }
 .nb-btn-ghost { background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0; }
 .nb-btn-ghost:hover { background: #e2e8f0; }
 .nb-btn-sm { padding: 4px 12px; font-size: 13px; }
@@ -75,14 +87,21 @@ foreach ($admins as $a) {
 /* ── Priority badge ── */
 .nb-priority { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; }
 
+/* ── Status badges ── */
+.nb-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; margin: 1px 2px; }
+.nb-badge-expired   { background: #fee2e2; color: #991b1b; }
+.nb-badge-scheduled { background: #fef9c3; color: #854d0e; }
+.nb-badge-template  { background: #e0e7ff; color: #3730a3; }
+.nb-badge-pinned    { background: #fef9c3; color: #854d0e; }
+.nb-badge-active    { background: #dcfce7; color: #166534; }
+.nb-badge-off       { background: #f1f5f9; color: #64748b; }
+
 /* ── Notice table ── */
 .nb-table { width: 100%; border-collapse: collapse; }
 .nb-table th { padding: 10px 12px; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; background: #f8fafc; border-bottom: 2px solid #e2e8f0; text-align: left; }
 .nb-table td { padding: 12px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; font-size: 14px; }
 .nb-table tr:last-child td { border-bottom: none; }
 .nb-table tr:hover td { background: #fafbff; }
-
-/* ── Notice row accent ── */
 .nb-row-accent { border-left: 4px solid #e2e8f0; }
 
 /* ── Markdown preview ── */
@@ -91,7 +110,6 @@ foreach ($admins as $a) {
 .nb-md-preview ul, .nb-md-preview ol { margin: 6px 0 6px 18px; padding: 0; }
 .nb-md-preview code { background: rgba(0,0,0,0.07); padding: 1px 5px; border-radius: 3px; font-size: 0.88em; }
 .nb-md-preview blockquote { border-left: 3px solid #cbd5e1; margin: 6px 0; padding: 2px 10px; color: #64748b; }
-.nb-mention { background: rgba(99,102,241,0.12); color: #4f46e5; border-radius: 3px; padding: 0 3px; font-weight: 600; }
 
 /* ── Collapsible section ── */
 .nb-section-toggle { cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
@@ -113,16 +131,70 @@ foreach ($admins as $a) {
 /* ── Admin chip ── */
 .nb-chip { display: inline-flex; align-items: center; gap: 4px; background: #ede9fe; color: #5b21b6; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; margin: 2px; }
 
+/* ── Tag chip ── */
+.nb-tag { display: inline-flex; align-items: center; gap: 3px; background: rgba(99,102,241,0.1); color: #4338ca; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600; margin: 2px; cursor: pointer; }
+.nb-tag:hover { background: rgba(99,102,241,0.2); }
+.nb-tag.active { background: #6366f1; color: #fff; }
+
+/* ── Tag input ── */
+.nb-tag-input-wrap { display: flex; flex-wrap: wrap; gap: 5px; padding: 6px 8px; border: 1px solid #cbd5e1; border-radius: 7px; min-height: 40px; align-items: center; cursor: text; }
+.nb-tag-input-wrap:focus-within { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+.nb-tag-pill { display: inline-flex; align-items: center; gap: 4px; background: #ede9fe; color: #5b21b6; border-radius: 999px; padding: 2px 8px; font-size: 12px; font-weight: 600; }
+.nb-tag-pill button { background: none; border: none; cursor: pointer; color: #7c3aed; font-size: 13px; line-height: 1; padding: 0 1px; }
+.nb-tag-real-input { border: none; outline: none; font-size: 13px; min-width: 80px; flex: 1; padding: 2px 4px; }
+
+/* ── Read count ── */
+.nb-read-count { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; color: #64748b; background: #f1f5f9; border-radius: 999px; padding: 1px 7px; margin: 1px; }
+
+/* ── Activity log ── */
+.nb-log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.nb-log-table th { padding: 8px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; background: #f8fafc; border-bottom: 1px solid #e2e8f0; text-align: left; }
+.nb-log-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: top; }
+.nb-log-table tr:last-child td { border-bottom: none; }
+
 /* ── Responsive ── */
+@media (max-width: 900px) {
+    .nb-grid-4 { grid-template-columns: 1fr 1fr; }
+    .nb-span4 { grid-column: span 2; }
+}
 @media (max-width: 700px) {
-    .nb-grid, .nb-grid-3 { grid-template-columns: 1fr; }
-    .nb-span2 { grid-column: span 1; }
+    .nb-grid, .nb-grid-3, .nb-grid-4 { grid-template-columns: 1fr; }
+    .nb-span2, .nb-span3, .nb-span4 { grid-column: span 1; }
 }
 </style>
 
 <div id="nb-wrap">
 
 <?php echo $message ?? ''; ?>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TEMPLATE PICKER (shown when templates exist and not editing)
+══════════════════════════════════════════════════════════════════════════ -->
+<?php if (!empty($templates) && !isset($edit_notice)): ?>
+<div class="nb-card" style="border-color:#e0e7ff;background:#f5f3ff;">
+    <div class="nb-card-body" style="padding:14px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        <span style="font-size:14px;font-weight:600;color:#3730a3;">Start from template:</span>
+        <select id="nb-template-picker" style="padding:6px 10px;border:1px solid #c7d2fe;border-radius:7px;font-size:14px;color:#1e293b;background:#fff;">
+            <option value="">— Select a template —</option>
+            <?php foreach ($templates as $tpl): ?>
+                <option value="<?php echo (int)$tpl['id']; ?>"
+                    data-title="<?php echo htmlspecialchars($tpl['notice_title']); ?>"
+                    data-content="<?php echo htmlspecialchars($tpl['notice_content'] ?? ''); ?>"
+                    data-priority="<?php echo htmlspecialchars($tpl['priority'] ?? 'normal'); ?>"
+                    data-bg="<?php echo htmlspecialchars($tpl['bg_color'] ?? '#fffae6'); ?>"
+                    data-fg="<?php echo htmlspecialchars($tpl['font_color'] ?? '#222222'); ?>"
+                    data-tags="<?php echo htmlspecialchars($tpl['tags'] ?? ''); ?>"
+                    data-admins="<?php echo htmlspecialchars(json_encode($tpl['assigned_admins'] ?? [])); ?>"
+                >
+                    <?php echo htmlspecialchars($tpl['template_name'] ?: $tpl['notice_title']); ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <button type="button" class="nb-btn nb-btn-primary nb-btn-sm" onclick="nbApplyTemplate()">Use Template</button>
+    </div>
+</div>
+<?php endif; ?>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      FORM CARD
@@ -147,7 +219,7 @@ foreach ($admins as $a) {
                 <!-- Title -->
                 <div class="nb-field">
                     <label>Notice Title <span style="color:#ef4444;">*</span></label>
-                    <input type="text" name="notice_title" required placeholder="e.g. Scheduled Maintenance"
+                    <input type="text" name="notice_title" id="nb-title" required placeholder="e.g. Scheduled Maintenance"
                         value="<?php echo htmlspecialchars($edit_notice['notice_title'] ?? ''); ?>">
                 </div>
 
@@ -169,7 +241,6 @@ foreach ($admins as $a) {
                         Notice Content
                         <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:6px;">Supports Markdown — **bold**, *italic*, `code`, [link](url), lists, @mention</span>
                     </label>
-                    <!-- Tabs -->
                     <div class="nb-tabs" style="margin-bottom:8px;">
                         <div class="nb-tab active" onclick="nbShowTab('write',this)">Write</div>
                         <div class="nb-tab" onclick="nbShowTab('preview',this)">Preview</div>
@@ -185,7 +256,7 @@ foreach ($admins as $a) {
                 </div>
             </div>
 
-            <!-- Audience & Display -->
+            <!-- Audience & Display toggles -->
             <div style="margin-top:16px;">
                 <div class="nb-switch-row">
                     <label class="nb-switch">
@@ -202,6 +273,11 @@ foreach ($admins as $a) {
                         <input type="checkbox" name="expandable" id="nb-expandable" value="1" <?php echo !empty($edit_notice['expandable']) ? 'checked' : ''; ?>>
                         <span class="nb-switch-track"></span>
                         Expandable
+                    </label>
+                    <label class="nb-switch">
+                        <input type="checkbox" name="is_pinned" value="1" <?php echo !empty($edit_notice['is_pinned']) ? 'checked' : ''; ?>>
+                        <span class="nb-switch-track"></span>
+                        📌 Pin to Top
                     </label>
                     <label class="nb-switch">
                         <input type="checkbox" name="button_enabled" id="nb-btn-check" value="1" <?php echo !empty($edit_notice['button_enabled']) ? 'checked' : ''; ?> onchange="nbToggle('nb-btn-opts',this)">
@@ -221,8 +297,8 @@ foreach ($admins as $a) {
                 </div>
             </div>
 
-            <!-- Colours & display settings -->
-            <div class="nb-grid-3" style="margin-top:16px;">
+            <!-- Colours & scheduling -->
+            <div class="nb-grid-4" style="margin-top:16px;">
                 <div class="nb-field">
                     <label>Background Colour</label>
                     <div class="nb-color-row">
@@ -242,10 +318,61 @@ foreach ($admins as $a) {
                     </div>
                 </div>
                 <div class="nb-field">
-                    <label>Timestamp</label>
+                    <label>Notice Timestamp</label>
                     <input type="datetime-local" name="notice_timestamp"
                         value="<?php echo isset($edit_notice['notice_timestamp']) && $edit_notice['notice_timestamp'] ? date('Y-m-d\TH:i', strtotime($edit_notice['notice_timestamp'])) : ''; ?>">
                 </div>
+                <div class="nb-field">
+                    <label>Show Again After (min)</label>
+                    <input type="number" name="show_again_minutes" min="0" value="<?php echo (int)($edit_notice['show_again_minutes'] ?? 60); ?>">
+                </div>
+            </div>
+
+            <!-- Scheduling: publish_at + expires_at -->
+            <div class="nb-grid" style="margin-top:14px;">
+                <div class="nb-field">
+                    <label>
+                        🕐 Publish At
+                        <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:4px;">Leave blank to publish immediately.</span>
+                    </label>
+                    <input type="datetime-local" name="publish_at"
+                        value="<?php echo isset($edit_notice['publish_at']) && $edit_notice['publish_at'] ? date('Y-m-d\TH:i', strtotime($edit_notice['publish_at'])) : ''; ?>">
+                </div>
+                <div class="nb-field">
+                    <label>
+                        ⏰ Expires At
+                        <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:4px;">Auto-hide after this time.</span>
+                    </label>
+                    <input type="datetime-local" name="expires_at"
+                        value="<?php echo isset($edit_notice['expires_at']) && $edit_notice['expires_at'] ? date('Y-m-d\TH:i', strtotime($edit_notice['expires_at'])) : ''; ?>">
+                </div>
+            </div>
+
+            <!-- Tags -->
+            <div class="nb-field" style="margin-top:14px;">
+                <label>
+                    🏷 Tags
+                    <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:4px;">Comma-separated. Press Enter or comma to add.</span>
+                </label>
+                <div class="nb-tag-input-wrap" id="nb-tag-wrap" onclick="document.getElementById('nb-tag-input').focus()">
+                    <?php
+                    $existingTags = array_filter(array_map('trim', explode(',', $edit_notice['tags'] ?? '')));
+                    foreach ($existingTags as $et):
+                    ?>
+                        <span class="nb-tag-pill" data-tag="<?php echo htmlspecialchars($et); ?>">
+                            #<?php echo htmlspecialchars($et); ?>
+                            <button type="button" onclick="nbRemoveTag(this)" tabindex="-1">&times;</button>
+                        </span>
+                    <?php endforeach; ?>
+                    <input type="text" id="nb-tag-input" class="nb-tag-real-input" placeholder="Add tag…" autocomplete="off"
+                        onkeydown="nbTagKeydown(event)" list="nb-tag-suggestions">
+                    <datalist id="nb-tag-suggestions">
+                        <?php foreach ($allTags as $at): ?>
+                            <option value="<?php echo htmlspecialchars($at); ?>">
+                        <?php endforeach; ?>
+                    </datalist>
+                </div>
+                <input type="hidden" name="tags" id="nb-tags-hidden" value="<?php echo htmlspecialchars($edit_notice['tags'] ?? ''); ?>">
             </div>
 
             <!-- CTA Button options -->
@@ -359,21 +486,98 @@ foreach ($admins as $a) {
                             <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-assigned-select option').forEach(o=>o.selected=false)">Clear</button>
                         </div>
                     </div>
-                    <small style="color:#94a3b8;">Hold Ctrl / Cmd to select multiple. You can also use @username inline in the content.</small>
+                    <small style="color:#94a3b8;">Hold Ctrl / Cmd to select multiple.</small>
                 </div>
             </div>
             <?php endif; ?>
 
-            <div style="margin-top:20px;display:flex;gap:10px;align-items:center;">
+            <!-- Client group targeting -->
+            <?php if (!empty($clientGroups)): ?>
+            <div style="margin-top:16px;">
+                <div class="nb-field">
+                    <label>
+                        🌐 Client Group Targeting
+                        <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:6px;">Only clients in selected groups will see this. Leave empty to show to all clients.</span>
+                    </label>
+                    <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+                        <select name="client_groups[]" multiple id="nb-groups-select"
+                            style="flex:1;min-width:220px;height:100px;border:1px solid #cbd5e1;border-radius:7px;padding:4px;font-size:14px;">
+                            <?php foreach ($clientGroups as $g): ?>
+                                <option value="<?php echo (int)$g->id; ?>"
+                                    <?php echo in_array($g->id, $edit_notice['client_groups'] ?? []) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($g->groupname); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div style="display:flex;flex-direction:column;gap:6px;padding-top:2px;">
+                            <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-groups-select option').forEach(o=>o.selected=true)">Select All</button>
+                            <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-groups-select option').forEach(o=>o.selected=false)">Clear</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <!-- Advanced section (page slugs + webhook) -->
+            <div style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                <div class="nb-section-toggle" id="nb-adv-toggle" onclick="nbToggleSection('nb-adv-body','nb-adv-toggle')"
+                    style="padding:10px 14px;background:#f8fafc;font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;">
+                    Advanced Options
+                </div>
+                <div id="nb-adv-body" class="nb-collapsible" style="padding:14px;">
+                    <div class="nb-grid">
+                        <div class="nb-field">
+                            <label>
+                                📄 Page Targeting (Client Area)
+                                <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:4px;">One URI pattern per line. Leave blank for all pages.</span>
+                            </label>
+                            <textarea name="page_slugs_raw" rows="4" placeholder="/clientarea.php?action=services&#10;/index.php*&#10;/cart.php*"
+                                style="font-family:monospace;font-size:12px;"><?php
+                                $existingSlugs = $edit_notice['page_slugs'] ?? [];
+                                echo htmlspecialchars(implode("\n", $existingSlugs));
+                            ?></textarea>
+                        </div>
+                        <div class="nb-field">
+                            <label>
+                                🔔 Webhook URL (per-notice override)
+                                <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:4px;">Overrides global config webhook.</span>
+                            </label>
+                            <input type="text" name="notice_webhook_url"
+                                value="<?php echo htmlspecialchars($edit_notice['webhook_url'] ?? ''); ?>"
+                                placeholder="https://hooks.slack.com/...">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button type="submit" name="save_notice" class="nb-btn nb-btn-primary">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
                     <?php echo isset($edit_notice) ? 'Update Notice' : 'Save Notice'; ?>
                 </button>
                 <?php if (isset($edit_notice)): ?>
                     <a href="<?php echo $_SERVER['REQUEST_URI']; ?>" class="nb-btn nb-btn-ghost">Cancel</a>
+                    <!-- Save as Template -->
+                    <button type="button" class="nb-btn nb-btn-ghost" onclick="nbOpenSaveTemplate(<?php echo (int)$edit_notice['id']; ?>)">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        Save as Template
+                    </button>
                 <?php endif; ?>
             </div>
         </form>
+
+        <!-- Save as Template mini-form (hidden) -->
+        <div id="nb-save-tpl-form" style="display:none;margin-top:12px;padding:12px 14px;background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;">
+            <form method="post" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <input type="hidden" name="save_as_template" id="nb-tpl-src-id" value="">
+                <div class="nb-field" style="flex:1;min-width:200px;">
+                    <label style="font-size:12px;">Template Name</label>
+                    <input type="text" name="template_name_input" placeholder="e.g. Maintenance Notice" required>
+                </div>
+                <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm" style="margin-top:18px;">Save Template</button>
+                <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" style="margin-top:18px;" onclick="document.getElementById('nb-save-tpl-form').style.display='none'">Cancel</button>
+            </form>
+        </div>
     </div>
 </div>
 
@@ -386,7 +590,19 @@ foreach ($admins as $a) {
             <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
             All Notices
         </h2>
-        <span style="font-size:13px;color:#94a3b8;"><?php echo count($notices); ?> notice<?php echo count($notices) == 1 ? '' : 's'; ?></span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <!-- Tag filter bar -->
+            <?php if (!empty($allTags)): ?>
+            <div id="nb-tag-filter-bar" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+                <span style="font-size:12px;color:#94a3b8;font-weight:600;">Filter:</span>
+                <span class="nb-tag active" data-filter-tag="" onclick="nbFilterTag(this,'')">All</span>
+                <?php foreach ($allTags as $ft): ?>
+                    <span class="nb-tag" data-filter-tag="<?php echo htmlspecialchars($ft); ?>" onclick="nbFilterTag(this,'<?php echo htmlspecialchars($ft); ?>')">#<?php echo htmlspecialchars($ft); ?></span>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <span style="font-size:13px;color:#94a3b8;"><?php echo count($notices); ?> notice<?php echo count($notices) == 1 ? '' : 's'; ?></span>
+        </div>
     </div>
 
     <?php if (empty($notices)): ?>
@@ -395,41 +611,60 @@ foreach ($admins as $a) {
             <div>No notices yet. Create one above.</div>
         </div>
     <?php else: ?>
-    <table class="nb-table">
+    <table class="nb-table" id="nb-notices-table">
         <thead>
             <tr>
-                <th style="width:44%;">Notice</th>
+                <th style="width:38%;">Notice</th>
                 <th>Priority</th>
                 <th>Audience</th>
                 <th>Status</th>
+                <th>Reads</th>
                 <th>Timestamp</th>
                 <th style="text-align:right;">Actions</th>
             </tr>
         </thead>
         <tbody>
         <?php foreach ($notices as $n):
-            $priority = $n['priority'] ?? 'normal';
-            $pc       = $priorityConfig[$priority] ?? $priorityConfig['normal'];
-            $accent   = $accentMap[$priority] ?? '#2563eb';
-            $isActive = !empty($n['show_to_admins']) || !empty($n['show_to_clients']);
-            $rowId    = 'nb-row-' . $n['id'];
+            $priority  = $n['priority'] ?? 'normal';
+            $pc        = $priorityConfig[$priority] ?? $priorityConfig['normal'];
+            $accent    = $accentMap[$priority] ?? '#2563eb';
+            $isActive  = !empty($n['show_to_admins']) || !empty($n['show_to_clients']);
+            $isExpired = !empty($n['expires_at']) && $n['expires_at'] < $now;
+            $isSched   = !empty($n['publish_at']) && $n['publish_at'] > $now;
+            $readCounts = noticebanner_get_read_counts((int)$n['id']);
+            $rowTags   = array_filter(array_map('trim', explode(',', $n['tags'] ?? '')));
         ?>
-        <tr class="nb-row-accent" style="border-left-color:<?php echo $accent; ?>;">
+        <tr class="nb-row-accent" style="border-left-color:<?php echo $accent; ?>;" data-tags="<?php echo htmlspecialchars(implode(',', $rowTags)); ?>">
             <td>
                 <!-- Title row -->
-                <div style="margin-bottom:4px;">
+                <div style="margin-bottom:4px;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">
+                    <?php if (!empty($n['is_pinned'])): ?>
+                        <span style="font-size:13px;">📌</span>
+                    <?php endif; ?>
                     <span style="font-weight:700;font-size:15px;"><?php echo htmlspecialchars($n['notice_title']); ?></span>
+                    <?php if ($isExpired): ?>
+                        <span class="nb-badge nb-badge-expired">⏰ Expired</span>
+                    <?php endif; ?>
+                    <?php if ($isSched): ?>
+                        <span class="nb-badge nb-badge-scheduled">🕐 Scheduled</span>
+                    <?php endif; ?>
                 </div>
 
-                <!-- Content preview (collapsible) -->
+                <!-- Content preview -->
                 <div style="color:#475569;font-size:13px;line-height:1.5;margin-bottom:6px;">
-                    <?php
-                    $preview = mb_strimwidth(strip_tags($n['notice_content'] ?? ''), 0, 160, '…');
-                    echo htmlspecialchars($preview);
-                    ?>
+                    <?php echo htmlspecialchars(mb_strimwidth(strip_tags($n['notice_content'] ?? ''), 0, 160, '…')); ?>
                 </div>
 
-                <!-- Assigned / Mentioned chips -->
+                <!-- Tags -->
+                <?php if (!empty($rowTags)): ?>
+                    <div style="margin-bottom:6px;display:flex;flex-wrap:wrap;gap:3px;">
+                        <?php foreach ($rowTags as $rt): ?>
+                            <span class="nb-tag" onclick="nbFilterTag(document.querySelector('[data-filter-tag=\'<?php echo htmlspecialchars($rt); ?>\']'),'<?php echo htmlspecialchars($rt); ?>')">#<?php echo htmlspecialchars($rt); ?></span>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Assigned admin chips -->
                 <?php if (!empty($n['assigned_admins'])): ?>
                     <div style="margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:3px;">
                         <span style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-right:2px;">Assigned:</span>
@@ -443,6 +678,18 @@ foreach ($admins as $a) {
                 <?php else: ?>
                     <div style="margin-bottom:6px;">
                         <span style="font-size:11px;color:#cbd5e1;font-style:italic;">Visible to all admins</span>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Client group chips -->
+                <?php if (!empty($n['client_groups'])): ?>
+                    <div style="margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:3px;">
+                        <span style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-right:2px;">Groups:</span>
+                        <?php foreach ($n['client_groups'] as $gid): ?>
+                            <span style="display:inline-flex;align-items:center;background:#e0f2fe;color:#0369a1;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;margin:1px;">
+                                <?php echo htmlspecialchars($groupMap[$gid] ?? 'Group #' . $gid); ?>
+                            </span>
+                        <?php endforeach; ?>
                     </div>
                 <?php endif; ?>
 
@@ -466,17 +713,6 @@ foreach ($admins as $a) {
                         </div>
                         <?php endforeach; ?>
                         <div style="font-size:11px;color:#94a3b8;margin-top:2px;"><?php echo $totalVotes; ?> total vote<?php echo $totalVotes == 1 ? '' : 's'; ?></div>
-
-                        <!-- Quick vote form -->
-                        <form method="post" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
-                            <input type="hidden" name="poll_notice_id" value="<?php echo (int)$n['id']; ?>">
-                            <select name="poll_vote" style="padding:4px 8px;border:1px solid #cbd5e1;border-radius:5px;font-size:12px;">
-                                <?php foreach ($n['poll_options'] as $opt): ?>
-                                    <option value="<?php echo htmlspecialchars($opt); ?>"><?php echo htmlspecialchars($opt); ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                            <button type="submit" class="nb-btn nb-btn-sm" style="background:#6366f1;color:#fff;padding:4px 12px;">Vote</button>
-                        </form>
                     </div>
                 <?php endif; ?>
 
@@ -512,11 +748,25 @@ foreach ($admins as $a) {
             <td>
                 <form method="post" style="display:inline;">
                     <input type="hidden" name="toggle_show" value="<?php echo (int)$n['id']; ?>">
-                    <button type="submit" class="nb-btn nb-btn-sm"
-                        style="background:<?php echo $isActive ? '#dcfce7' : '#f1f5f9'; ?>;color:<?php echo $isActive ? '#166534' : '#64748b'; ?>;border:1px solid <?php echo $isActive ? '#bbf7d0' : '#e2e8f0'; ?>;">
+                    <button type="submit" class="nb-btn nb-btn-sm nb-badge <?php echo $isActive ? 'nb-badge-active' : 'nb-badge-off'; ?>"
+                        style="border:none;cursor:pointer;">
                         <?php echo $isActive ? '● Active' : '○ Off'; ?>
                     </button>
                 </form>
+                <?php if ($isExpired): ?><div class="nb-badge nb-badge-expired" style="margin-top:3px;">Expired</div><?php endif; ?>
+                <?php if ($isSched): ?><div class="nb-badge nb-badge-scheduled" style="margin-top:3px;">Scheduled</div><?php endif; ?>
+            </td>
+
+            <td style="font-size:12px;white-space:nowrap;">
+                <?php if ($readCounts['admins'] > 0): ?>
+                    <div class="nb-read-count">👤 <?php echo $readCounts['admins']; ?> admin<?php echo $readCounts['admins'] == 1 ? '' : 's'; ?></div>
+                <?php endif; ?>
+                <?php if ($readCounts['clients'] > 0): ?>
+                    <div class="nb-read-count">🌐 <?php echo $readCounts['clients']; ?> client<?php echo $readCounts['clients'] == 1 ? '' : 's'; ?></div>
+                <?php endif; ?>
+                <?php if ($readCounts['admins'] === 0 && $readCounts['clients'] === 0): ?>
+                    <span style="color:#cbd5e1;font-style:italic;font-size:11px;">None yet</span>
+                <?php endif; ?>
             </td>
 
             <td style="font-size:12px;white-space:nowrap;">
@@ -527,6 +777,12 @@ foreach ($admins as $a) {
                     <div style="color:#94a3b8;font-style:italic;">Not set</div>
                     <div style="color:#cbd5e1;font-size:11px;">Created <?php echo isset($n['created_at']) ? date('M j', strtotime($n['created_at'])) : '—'; ?></div>
                 <?php endif; ?>
+                <?php if (!empty($n['publish_at'])): ?>
+                    <div style="color:#854d0e;font-size:11px;margin-top:2px;">Pub: <?php echo date('M j g:ia', strtotime($n['publish_at'])); ?></div>
+                <?php endif; ?>
+                <?php if (!empty($n['expires_at'])): ?>
+                    <div style="color:#991b1b;font-size:11px;margin-top:2px;">Exp: <?php echo date('M j g:ia', strtotime($n['expires_at'])); ?></div>
+                <?php endif; ?>
             </td>
 
             <td style="text-align:right;white-space:nowrap;">
@@ -536,6 +792,13 @@ foreach ($admins as $a) {
                         <input type="hidden" name="edit_load" value="<?php echo (int)$n['id']; ?>">
                         <button type="submit" class="nb-btn nb-btn-ghost nb-btn-icon" title="Edit">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                    </form>
+                    <!-- Clone -->
+                    <form method="post" style="display:inline;" onsubmit="return confirm('Clone this notice?');">
+                        <input type="hidden" name="clone_notice" value="<?php echo (int)$n['id']; ?>">
+                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-icon" title="Clone">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
                     </form>
                     <!-- Move up -->
@@ -564,6 +827,79 @@ foreach ($admins as $a) {
     <?php endif; ?>
 </div>
 
+<!-- ══════════════════════════════════════════════════════════════════════════
+     ACTIVITY LOG
+══════════════════════════════════════════════════════════════════════════ -->
+<?php
+try {
+    $logEntries = \WHMCS\Database\Capsule::table('mod_noticebanner_log as l')
+        ->leftJoin('tbladmins as a', 'l.admin_id', '=', 'a.id')
+        ->leftJoin('mod_noticebanner as n', 'l.notice_id', '=', 'n.id')
+        ->orderBy('l.id', 'desc')
+        ->limit(50)
+        ->get(['l.id', 'l.notice_id', 'l.action', 'l.detail', 'l.created_at',
+               'a.firstname', 'a.lastname', 'n.notice_title'])
+        ->toArray();
+} catch (\Exception $e) {
+    $logEntries = [];
+}
+?>
+<div class="nb-card">
+    <div class="nb-card-header" style="cursor:pointer;" onclick="nbToggleSection('nb-log-body','nb-log-toggle')">
+        <h2>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            Activity Log
+        </h2>
+        <span id="nb-log-toggle" class="nb-section-toggle" style="font-size:12px;color:#94a3b8;">▶ Show</span>
+    </div>
+    <div id="nb-log-body" class="nb-collapsible">
+        <?php if (empty($logEntries)): ?>
+            <div class="nb-card-body" style="text-align:center;color:#94a3b8;padding:20px;">No activity recorded yet.</div>
+        <?php else: ?>
+        <div style="overflow-x:auto;">
+        <table class="nb-log-table">
+            <thead>
+                <tr>
+                    <th>Time</th>
+                    <th>Admin</th>
+                    <th>Action</th>
+                    <th>Notice</th>
+                    <th>Detail</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($logEntries as $le): ?>
+            <tr>
+                <td style="white-space:nowrap;color:#94a3b8;"><?php echo date('M j g:ia', strtotime($le->created_at)); ?></td>
+                <td style="white-space:nowrap;"><?php echo htmlspecialchars(($le->firstname ?? '') . ' ' . ($le->lastname ?? '') ?: '—'); ?></td>
+                <td>
+                    <?php
+                    $actionColors = [
+                        'created'           => '#166534',
+                        'updated'           => '#1d4ed8',
+                        'deleted'           => '#991b1b',
+                        'cloned'            => '#7c3aed',
+                        'enabled'           => '#166534',
+                        'disabled'          => '#64748b',
+                        'poll_vote'         => '#0369a1',
+                        'acknowledged'      => '#0f766e',
+                        'saved_as_template' => '#7c3aed',
+                    ];
+                    $ac = $actionColors[$le->action] ?? '#475569';
+                    ?>
+                    <span style="color:<?php echo $ac; ?>;font-weight:600;font-size:12px;"><?php echo htmlspecialchars($le->action); ?></span>
+                </td>
+                <td style="color:#475569;"><?php echo htmlspecialchars($le->notice_title ?? ($le->notice_id ? '#' . $le->notice_id : '—')); ?></td>
+                <td style="color:#94a3b8;font-size:12px;"><?php echo htmlspecialchars($le->detail ?? ''); ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+
 </div><!-- #nb-wrap -->
 
 <script>
@@ -576,7 +912,7 @@ function nbShowTab(tab, el) {
     if (tab === 'preview') nbUpdatePreview();
 }
 
-// ── Markdown preview (client-side, mirrors server logic) ──────────────────────
+// ── Markdown preview ──────────────────────────────────────────────────────────
 function nbMd(t) {
     t = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     t = t.replace(/^### (.+)$/gm,'<h5 style="margin:8px 0 4px;">$1</h5>');
@@ -609,10 +945,20 @@ function nbToggle(id, checkbox) {
     document.getElementById(id).style.display = checkbox.checked ? 'block' : 'none';
 }
 function nbToggleRow(id, btn) {
-    var el = document.getElementById(id);
+    var el   = document.getElementById(id);
     var open = el.style.display !== 'none';
     el.style.display = open ? 'none' : 'block';
-    btn.textContent = open ? (btn.dataset.closed || 'Show') : (btn.dataset.open || 'Hide');
+    btn.textContent  = open ? (btn.dataset.closed || 'Show') : (btn.dataset.open || 'Hide');
+}
+function nbToggleSection(bodyId, toggleId) {
+    var body   = document.getElementById(bodyId);
+    var toggle = document.getElementById(toggleId);
+    var open   = body.classList.contains('open');
+    body.classList.toggle('open', !open);
+    if (toggle) {
+        toggle.classList.toggle('open', !open);
+        toggle.textContent = open ? '▶ Show' : '▼ Hide';
+    }
 }
 
 // ── Poll option add ───────────────────────────────────────────────────────────
@@ -627,6 +973,82 @@ document.getElementById('nb-add-opt').addEventListener('click', function() {
     row.querySelector('input').focus();
 });
 
+// ── Tag chip input ────────────────────────────────────────────────────────────
+function nbSyncTagsHidden() {
+    var pills = document.querySelectorAll('#nb-tag-wrap .nb-tag-pill');
+    var tags  = Array.from(pills).map(p => p.dataset.tag);
+    document.getElementById('nb-tags-hidden').value = tags.join(',');
+}
+function nbAddTag(val) {
+    val = val.trim().toLowerCase().replace(/[^a-z0-9\-_]/g, '');
+    if (!val) return;
+    var existing = Array.from(document.querySelectorAll('#nb-tag-wrap .nb-tag-pill')).map(p => p.dataset.tag);
+    if (existing.includes(val)) return;
+    var wrap = document.getElementById('nb-tag-wrap');
+    var inp  = document.getElementById('nb-tag-input');
+    var pill = document.createElement('span');
+    pill.className = 'nb-tag-pill';
+    pill.dataset.tag = val;
+    pill.innerHTML = '#' + val + ' <button type="button" onclick="nbRemoveTag(this)" tabindex="-1">&times;</button>';
+    wrap.insertBefore(pill, inp);
+    inp.value = '';
+    nbSyncTagsHidden();
+}
+function nbRemoveTag(btn) {
+    btn.closest('.nb-tag-pill').remove();
+    nbSyncTagsHidden();
+}
+function nbTagKeydown(e) {
+    if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        nbAddTag(e.target.value);
+    } else if (e.key === 'Backspace' && e.target.value === '') {
+        var pills = document.querySelectorAll('#nb-tag-wrap .nb-tag-pill');
+        if (pills.length) pills[pills.length - 1].remove();
+        nbSyncTagsHidden();
+    }
+}
+
+// ── Tag filter bar ────────────────────────────────────────────────────────────
+function nbFilterTag(el, tag) {
+    document.querySelectorAll('#nb-tag-filter-bar .nb-tag').forEach(t => t.classList.remove('active'));
+    if (el) el.classList.add('active');
+    var rows = document.querySelectorAll('#nb-notices-table tbody tr');
+    rows.forEach(function(row) {
+        if (!tag) { row.style.display = ''; return; }
+        var rowTags = (row.dataset.tags || '').split(',').map(t => t.trim());
+        row.style.display = rowTags.includes(tag) ? '' : 'none';
+    });
+}
+
+// ── Template picker ───────────────────────────────────────────────────────────
+function nbApplyTemplate() {
+    var sel = document.getElementById('nb-template-picker');
+    var opt = sel.options[sel.selectedIndex];
+    if (!opt || !opt.value) return;
+    document.getElementById('nb-title').value    = opt.dataset.title || '';
+    document.getElementById('nb-content').value  = opt.dataset.content || '';
+    document.getElementById('nb-priority').value = opt.dataset.priority || 'normal';
+    document.getElementById('nb-bg-hex').value   = opt.dataset.bg || '#fffae6';
+    document.getElementById('nb-fg-hex').value   = opt.dataset.fg || '#222222';
+    document.getElementById('nb-bg-picker').value = opt.dataset.bg || '#fffae6';
+    document.getElementById('nb-fg-picker').value = opt.dataset.fg || '#222222';
+    // Tags
+    document.querySelectorAll('#nb-tag-wrap .nb-tag-pill').forEach(p => p.remove());
+    if (opt.dataset.tags) {
+        opt.dataset.tags.split(',').forEach(t => nbAddTag(t));
+    }
+    nbUpdatePreview();
+    document.getElementById('nb-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Save as Template ──────────────────────────────────────────────────────────
+function nbOpenSaveTemplate(id) {
+    document.getElementById('nb-tpl-src-id').value = id;
+    document.getElementById('nb-save-tpl-form').style.display = 'block';
+    document.getElementById('nb-save-tpl-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
 // ── Scroll to form on edit load ───────────────────────────────────────────────
 <?php if (isset($edit_notice)): ?>
 document.addEventListener('DOMContentLoaded', function() {
@@ -634,8 +1056,9 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 <?php endif; ?>
 
-// ── Init preview if editing ───────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
     nbUpdatePreview();
+    nbSyncTagsHidden();
 });
 </script>

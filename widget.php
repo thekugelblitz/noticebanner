@@ -42,6 +42,8 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
             foreach ($rows as $row) {
                 $n = (array)$row;
                 $n['assigned_admins'] = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
+                $n['client_groups']   = json_decode($n['client_groups'] ?? '[]', true) ?: [];
+                $n['page_slugs']      = json_decode($n['page_slugs'] ?? '[]', true) ?: [];
                 $notices[] = $n;
             }
         } catch (\Exception $e) {}
@@ -120,6 +122,15 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
                         'mentioned_admins'     => json_encode([]),
                         'priority'             => $_POST['nb_priority'] ?? 'normal',
                         'sort_order'           => 0,
+                        'expires_at'           => null,
+                        'publish_at'           => null,
+                        'tags'                 => '',
+                        'client_groups'        => json_encode([]),
+                        'page_slugs'           => json_encode([]),
+                        'webhook_url'          => '',
+                        'is_pinned'            => 0,
+                        'is_template'          => 0,
+                        'template_name'        => '',
                         'created_at'           => date('Y-m-d H:i:s'),
                         'updated_at'           => date('Y-m-d H:i:s'),
                     ]);
@@ -133,6 +144,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         $this->handlePost();
         $data    = $this->getData();
         $notices = $data['notices'];
+        $now     = date('Y-m-d H:i:s');
 
         $active   = array_values(array_filter($notices, fn($n) => !empty($n['show_to_admins']) || !empty($n['show_to_clients'])));
         $inactive = array_values(array_filter($notices, fn($n) => empty($n['show_to_admins']) && empty($n['show_to_clients'])));
@@ -238,13 +250,19 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
             $preview        = mb_strimwidth($stripped, 0, 140, '…');
             $needsExpand    = mb_strlen($stripped) > 140;
             $hasTs          = !empty($n['notice_timestamp']);
+            $isExpired      = !empty($n['expires_at']) && $n['expires_at'] < $now;
+            $isSched        = !empty($n['publish_at']) && $n['publish_at'] > $now;
+            $isPinned       = !empty($n['is_pinned']);
         ?>
         <div class="nbw-card" style="border-left-color:<?php echo $ac; ?>;">
             <div class="nbw-card-head">
                 <div style="flex:1;min-width:0;">
                     <div class="nbw-title-row">
+                        <?php if ($isPinned): ?><span style="font-size:12px;">📌</span><?php endif; ?>
                         <span class="nbw-title"><?php echo htmlspecialchars($n['notice_title']); ?></span>
                         <span class="nbw-badge" style="background:<?php echo $bgc; ?>;color:<?php echo $ac; ?>;"><?php echo ucfirst($priority); ?></span>
+                        <?php if ($isExpired): ?><span class="nbw-badge" style="background:#fee2e2;color:#991b1b;">⏰ Expired</span><?php endif; ?>
+                        <?php if ($isSched): ?><span class="nbw-badge" style="background:#fef9c3;color:#854d0e;">🕐 Scheduled</span><?php endif; ?>
                     </div>
                     <div class="nbw-meta">
                         <form method="post" style="display:contents;">
@@ -262,7 +280,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
                             </button>
                         </form>
                         <?php foreach ($assignedAdmins as $aid): ?>
-                            <span class="nbw-chip">📌 <?php echo htmlspecialchars($nameMap[$aid] ?? 'Admin #'.$aid); ?></span>
+                            <span class="nbw-chip">👤 <?php echo htmlspecialchars($nameMap[$aid] ?? 'Admin #'.$aid); ?></span>
                         <?php endforeach; ?>
                         <?php if ($hasTs): ?>
                             <span class="nbw-ts">🕐 <?php echo date('M j, Y g:ia', strtotime($n['notice_timestamp'])); ?></span>
@@ -307,13 +325,19 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
                 $preview        = mb_strimwidth($stripped, 0, 140, '…');
                 $needsExpand    = mb_strlen($stripped) > 140;
                 $hasTs          = !empty($n['notice_timestamp']);
+                $isExpired      = !empty($n['expires_at']) && $n['expires_at'] < $now;
+                $isSched        = !empty($n['publish_at']) && $n['publish_at'] > $now;
+                $isPinned       = !empty($n['is_pinned']);
             ?>
             <div class="nbw-card" style="border-left-color:#cbd5e1;opacity:0.85;">
                 <div class="nbw-card-head">
                     <div style="flex:1;min-width:0;">
                         <div class="nbw-title-row">
+                            <?php if ($isPinned): ?><span style="font-size:12px;">📌</span><?php endif; ?>
                             <span class="nbw-title"><?php echo htmlspecialchars($n['notice_title']); ?></span>
                             <span class="nbw-badge" style="background:<?php echo $bgc; ?>;color:<?php echo $ac; ?>;"><?php echo ucfirst($priority); ?></span>
+                            <?php if ($isExpired): ?><span class="nbw-badge" style="background:#fee2e2;color:#991b1b;">⏰ Expired</span><?php endif; ?>
+                            <?php if ($isSched): ?><span class="nbw-badge" style="background:#fef9c3;color:#854d0e;">🕐 Scheduled</span><?php endif; ?>
                         </div>
                         <div class="nbw-meta">
                             <form method="post" style="display:contents;">
@@ -327,7 +351,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
                                 <button type="submit" class="nbw-toggle nbw-toggle-off">🌐 Clients ✗</button>
                             </form>
                             <?php foreach ($assignedAdmins as $aid): ?>
-                                <span class="nbw-chip">📌 <?php echo htmlspecialchars($nameMap[$aid] ?? 'Admin #'.$aid); ?></span>
+                                <span class="nbw-chip">👤 <?php echo htmlspecialchars($nameMap[$aid] ?? 'Admin #'.$aid); ?></span>
                             <?php endforeach; ?>
                             <?php if ($hasTs): ?>
                                 <span class="nbw-ts">🕐 <?php echo date('M j, Y g:ia', strtotime($n['notice_timestamp'])); ?></span>

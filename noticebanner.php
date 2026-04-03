@@ -9,10 +9,17 @@ if (!function_exists('noticebanner_config')) {
 function noticebanner_config() {
     return [
         'name'        => 'Notice Banner',
-        'description' => 'Display admin/client notices as banners with markdown, polls, @mentions and admin assignments.',
-        'version'     => '2.0',
+        'description' => 'Display admin/client notices as banners with markdown, polls, @mentions, assignments, scheduling and more.',
+        'version'     => '3.0',
         'author'      => 'Dhruv from HostingSpell',
-        'fields'      => [],
+        'fields'      => [
+            'webhook_url' => [
+                'FriendlyName' => 'Global Webhook URL',
+                'Type'         => 'text',
+                'Size'         => '60',
+                'Description'  => 'POST JSON payload to this URL whenever a notice is created or updated (Slack/Discord/custom). Leave blank to disable.',
+            ],
+        ],
     ];
 }
 }
@@ -22,18 +29,18 @@ function noticebanner_config() {
 if (!function_exists('noticebanner_activate')) {
 function noticebanner_activate() {
     noticebanner_ensure_table();
-    return ['status' => 'success', 'description' => 'Notice Banner v2.0 activated. Database table ready.'];
+    noticebanner_ensure_columns();
+    return ['status' => 'success', 'description' => 'Notice Banner v3.0 activated. Database ready.'];
 }
 }
 
 if (!function_exists('noticebanner_deactivate')) {
 function noticebanner_deactivate() {
-    // Table is preserved on deactivate to avoid data loss.
-    return ['status' => 'success', 'description' => 'Module deactivated. Data table preserved.'];
+    return ['status' => 'success', 'description' => 'Module deactivated. All data tables preserved.'];
 }
 }
 
-// ─── Table bootstrap (idempotent, called on every request) ───────────────────
+// ─── Table bootstrap ─────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_ensure_table')) {
 function noticebanner_ensure_table() {
@@ -42,39 +49,49 @@ function noticebanner_ensure_table() {
     $checked = true;
     try {
         $schema = \WHMCS\Database\Capsule::schema();
-        if ($schema->hasTable('mod_noticebanner')) return;
-
-        $schema->create('mod_noticebanner', function ($table) {
-            $table->increments('id');
-            $table->string('notice_title', 255)->default('');
-            $table->text('notice_content')->nullable();
-            $table->tinyInteger('show_to_clients')->default(0);
-            $table->tinyInteger('show_to_admins')->default(1);
-            $table->string('display_type', 20)->default('banner');
-            $table->integer('show_again_minutes')->default(60);
-            $table->tinyInteger('expandable')->default(0);
-            $table->string('bg_color', 30)->default('#fffae6');
-            $table->string('font_color', 30)->default('#222222');
-            $table->tinyInteger('button_enabled')->default(0);
-            $table->string('button_text', 100)->default('');
-            $table->string('button_link', 500)->default('');
-            $table->tinyInteger('button_newtab')->default(0);
-            $table->string('button_bg', 30)->default('#2563eb');
-            $table->string('button_color', 30)->default('#ffffff');
-            $table->tinyInteger('ticket_enabled')->default(0);
-            $table->string('ticket_department_id', 20)->default('');
-            $table->string('ticket_button_text', 100)->default('');
-            $table->tinyInteger('poll_enabled')->default(0);
-            $table->string('poll_question', 500)->default('');
-            $table->text('poll_options')->nullable();
-            $table->text('poll_results')->nullable();
-            $table->text('assigned_admins')->nullable();
-            $table->text('mentioned_admins')->nullable();
-            $table->string('priority', 20)->default('normal');
-            $table->datetime('notice_timestamp')->nullable();
-            $table->integer('sort_order')->default(0);
-            $table->timestamps();
-        });
+        if (!$schema->hasTable('mod_noticebanner')) {
+            $schema->create('mod_noticebanner', function ($table) {
+                $table->increments('id');
+                $table->string('notice_title', 255)->default('');
+                $table->text('notice_content')->nullable();
+                $table->tinyInteger('show_to_clients')->default(0);
+                $table->tinyInteger('show_to_admins')->default(1);
+                $table->string('display_type', 20)->default('banner');
+                $table->integer('show_again_minutes')->default(60);
+                $table->tinyInteger('expandable')->default(0);
+                $table->string('bg_color', 30)->default('#fffae6');
+                $table->string('font_color', 30)->default('#222222');
+                $table->tinyInteger('button_enabled')->default(0);
+                $table->string('button_text', 100)->default('');
+                $table->string('button_link', 500)->default('');
+                $table->tinyInteger('button_newtab')->default(0);
+                $table->string('button_bg', 30)->default('#2563eb');
+                $table->string('button_color', 30)->default('#ffffff');
+                $table->tinyInteger('ticket_enabled')->default(0);
+                $table->string('ticket_department_id', 20)->default('');
+                $table->string('ticket_button_text', 100)->default('');
+                $table->tinyInteger('poll_enabled')->default(0);
+                $table->string('poll_question', 500)->default('');
+                $table->text('poll_options')->nullable();
+                $table->text('poll_results')->nullable();
+                $table->text('assigned_admins')->nullable();
+                $table->text('mentioned_admins')->nullable();
+                $table->string('priority', 20)->default('normal');
+                $table->datetime('notice_timestamp')->nullable();
+                $table->integer('sort_order')->default(0);
+                // v3 columns
+                $table->datetime('expires_at')->nullable();
+                $table->string('tags', 500)->default('');
+                $table->text('client_groups')->nullable();
+                $table->tinyInteger('is_template')->default(0);
+                $table->string('template_name', 100)->default('');
+                $table->datetime('publish_at')->nullable();
+                $table->string('webhook_url', 500)->default('');
+                $table->text('page_slugs')->nullable();
+                $table->tinyInteger('is_pinned')->default(0);
+                $table->timestamps();
+            });
+        }
 
         // Migrate legacy data.txt if present
         $legacyFile = __DIR__ . '/data.txt';
@@ -117,34 +134,238 @@ function noticebanner_ensure_table() {
                 rename($legacyFile, $legacyFile . '.migrated');
             }
         }
-    } catch (\Exception $e) {
-        // Silently fail — error will surface naturally on next DB query
+
+        noticebanner_ensure_columns();
+    } catch (\Exception $e) {}
+}
+}
+
+// ─── Column migration (idempotent — adds new v3 columns to existing tables) ──
+
+if (!function_exists('noticebanner_ensure_columns')) {
+function noticebanner_ensure_columns() {
+    static $colChecked = false;
+    if ($colChecked) return;
+    $colChecked = true;
+    try {
+        $schema = \WHMCS\Database\Capsule::schema();
+
+        // v3 columns on mod_noticebanner
+        $schema->table('mod_noticebanner', function ($table) use ($schema) {
+            if (!$schema->hasColumn('mod_noticebanner', 'expires_at'))
+                $table->datetime('expires_at')->nullable()->after('sort_order');
+            if (!$schema->hasColumn('mod_noticebanner', 'tags'))
+                $table->string('tags', 500)->default('')->after('expires_at');
+            if (!$schema->hasColumn('mod_noticebanner', 'client_groups'))
+                $table->text('client_groups')->nullable()->after('tags');
+            if (!$schema->hasColumn('mod_noticebanner', 'is_template'))
+                $table->tinyInteger('is_template')->default(0)->after('client_groups');
+            if (!$schema->hasColumn('mod_noticebanner', 'template_name'))
+                $table->string('template_name', 100)->default('')->after('is_template');
+            if (!$schema->hasColumn('mod_noticebanner', 'publish_at'))
+                $table->datetime('publish_at')->nullable()->after('template_name');
+            if (!$schema->hasColumn('mod_noticebanner', 'webhook_url'))
+                $table->string('webhook_url', 500)->default('')->after('publish_at');
+            if (!$schema->hasColumn('mod_noticebanner', 'page_slugs'))
+                $table->text('page_slugs')->nullable()->after('webhook_url');
+            if (!$schema->hasColumn('mod_noticebanner', 'is_pinned'))
+                $table->tinyInteger('is_pinned')->default(0)->after('page_slugs');
+        });
+
+        // mod_noticebanner_reads
+        if (!$schema->hasTable('mod_noticebanner_reads')) {
+            $schema->create('mod_noticebanner_reads', function ($table) {
+                $table->increments('id');
+                $table->unsignedInteger('notice_id');
+                $table->string('entity_type', 10)->default('admin'); // admin|client
+                $table->unsignedInteger('entity_id');
+                $table->timestamp('read_at')->useCurrent();
+                $table->unique(['notice_id', 'entity_type', 'entity_id'], 'uniq_nb_read');
+            });
+        }
+
+        // mod_noticebanner_log
+        if (!$schema->hasTable('mod_noticebanner_log')) {
+            $schema->create('mod_noticebanner_log', function ($table) {
+                $table->increments('id');
+                $table->unsignedInteger('notice_id')->nullable();
+                $table->unsignedInteger('admin_id')->nullable();
+                $table->string('action', 50);
+                $table->text('detail')->nullable();
+                $table->timestamp('created_at')->useCurrent();
+            });
+        }
+    } catch (\Exception $e) {}
+}
+}
+
+// ─── Audit log helper ─────────────────────────────────────────────────────────
+
+if (!function_exists('noticebanner_log')) {
+function noticebanner_log($noticeId, string $action, string $detail = '') {
+    try {
+        $adminId = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : null;
+        \WHMCS\Database\Capsule::table('mod_noticebanner_log')->insert([
+            'notice_id'  => $noticeId ?: null,
+            'admin_id'   => $adminId,
+            'action'     => $action,
+            'detail'     => $detail ?: null,
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+    } catch (\Exception $e) {}
+}
+}
+
+// ─── Webhook helper ───────────────────────────────────────────────────────────
+
+if (!function_exists('noticebanner_fire_webhook')) {
+function noticebanner_fire_webhook(array $notice, string $event) {
+    // Per-notice URL overrides global config
+    $url = trim($notice['webhook_url'] ?? '');
+    if (!$url) {
+        try {
+            $cfg = \WHMCS\Database\Capsule::table('tbladdonmodules')
+                ->where('module', 'noticebanner')
+                ->where('setting', 'webhook_url')
+                ->value('value');
+            $url = trim($cfg ?? '');
+        } catch (\Exception $e) {}
     }
+    if (!$url) return;
+
+    $payload = json_encode([
+        'event'           => $event,
+        'id'              => $notice['id'] ?? null,
+        'title'           => $notice['notice_title'] ?? '',
+        'priority'        => $notice['priority'] ?? 'normal',
+        'show_to_admins'  => !empty($notice['show_to_admins']),
+        'show_to_clients' => !empty($notice['show_to_clients']),
+        'tags'            => $notice['tags'] ?? '',
+        'expires_at'      => $notice['expires_at'] ?? null,
+        'publish_at'      => $notice['publish_at'] ?? null,
+        'timestamp'       => date('c'),
+    ]);
+
+    try {
+        $ctx = stream_context_create(['http' => [
+            'method'  => 'POST',
+            'header'  => "Content-Type: application/json\r\nContent-Length: " . strlen($payload) . "\r\n",
+            'content' => $payload,
+            'timeout' => 5,
+            'ignore_errors' => true,
+        ]]);
+        @file_get_contents($url, false, $ctx);
+    } catch (\Exception $e) {}
 }
 }
 
 // ─── DB Helpers ──────────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_get_notices')) {
-function noticebanner_get_notices() {
+function noticebanner_get_notices(bool $forRendering = false) {
     noticebanner_ensure_table();
+    noticebanner_ensure_columns();
     try {
-        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner')
-            ->orderBy('sort_order', 'asc')
-            ->orderBy('id', 'asc')
-            ->get();
+        $now = date('Y-m-d H:i:s');
+        $q   = \WHMCS\Database\Capsule::table('mod_noticebanner')
+            ->where('is_template', 0);
+
+        if ($forRendering) {
+            // Exclude expired notices
+            $q->where(function ($q2) use ($now) {
+                $q2->whereNull('expires_at')->orWhere('expires_at', '>', $now);
+            });
+            // Exclude scheduled (not yet published) notices
+            $q->where(function ($q2) use ($now) {
+                $q2->whereNull('publish_at')->orWhere('publish_at', '<=', $now);
+            });
+        }
+
+        $rows = $q->orderByRaw('is_pinned DESC')
+                  ->orderBy('sort_order', 'asc')
+                  ->orderBy('id', 'asc')
+                  ->get();
+
         $notices = [];
         foreach ($rows as $row) {
             $n = (array)$row;
-            $n['poll_options']      = json_decode($n['poll_options'] ?? '[]', true) ?: [];
-            $n['poll_results']      = json_decode($n['poll_results'] ?? '{}', true) ?: [];
-            $n['assigned_admins']   = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
-            $n['mentioned_admins']  = json_decode($n['mentioned_admins'] ?? '[]', true) ?: [];
+            $n['poll_options']     = json_decode($n['poll_options'] ?? '[]', true) ?: [];
+            $n['poll_results']     = json_decode($n['poll_results'] ?? '{}', true) ?: [];
+            $n['assigned_admins']  = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
+            $n['mentioned_admins'] = json_decode($n['mentioned_admins'] ?? '[]', true) ?: [];
+            $n['client_groups']    = json_decode($n['client_groups'] ?? '[]', true) ?: [];
+            $n['page_slugs']       = json_decode($n['page_slugs'] ?? '[]', true) ?: [];
             $notices[] = $n;
         }
         return $notices;
     } catch (\Exception $e) {
         return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_templates')) {
+function noticebanner_get_templates() {
+    noticebanner_ensure_table();
+    noticebanner_ensure_columns();
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner')
+            ->where('is_template', 1)
+            ->orderBy('template_name')
+            ->get();
+        $out = [];
+        foreach ($rows as $row) {
+            $n = (array)$row;
+            $n['poll_options']    = json_decode($n['poll_options'] ?? '[]', true) ?: [];
+            $n['assigned_admins'] = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
+            $n['client_groups']   = json_decode($n['client_groups'] ?? '[]', true) ?: [];
+            $n['page_slugs']      = json_decode($n['page_slugs'] ?? '[]', true) ?: [];
+            $out[] = $n;
+        }
+        return $out;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_all_tags')) {
+function noticebanner_get_all_tags(): array {
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner')
+            ->where('is_template', 0)
+            ->whereNotNull('tags')
+            ->where('tags', '!=', '')
+            ->pluck('tags');
+        $tags = [];
+        foreach ($rows as $r) {
+            foreach (array_map('trim', explode(',', $r)) as $t) {
+                if ($t !== '') $tags[$t] = true;
+            }
+        }
+        return array_keys($tags);
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_read_counts')) {
+function noticebanner_get_read_counts(int $noticeId): array {
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner_reads')
+            ->where('notice_id', $noticeId)
+            ->selectRaw('entity_type, COUNT(*) as cnt')
+            ->groupBy('entity_type')
+            ->get();
+        $out = ['admins' => 0, 'clients' => 0];
+        foreach ($rows as $r) {
+            if ($r->entity_type === 'admin')  $out['admins']  = (int)$r->cnt;
+            if ($r->entity_type === 'client') $out['clients'] = (int)$r->cnt;
+        }
+        return $out;
+    } catch (\Exception $e) {
+        return ['admins' => 0, 'clients' => 0];
     }
 }
 }
@@ -177,19 +398,95 @@ function noticebanner_get_departments() {
 }
 }
 
+if (!function_exists('noticebanner_get_client_groups')) {
+function noticebanner_get_client_groups() {
+    try {
+        return \WHMCS\Database\Capsule::table('tblclientgroups')
+            ->orderBy('groupname')
+            ->get(['id', 'groupname'])
+            ->toArray();
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+// ─── Build save payload from POST ────────────────────────────────────────────
+
+if (!function_exists('noticebanner_build_payload')) {
+function noticebanner_build_payload(): array {
+    $assignedAdmins = isset($_POST['assigned_admins']) && is_array($_POST['assigned_admins'])
+        ? array_values(array_unique(array_map('intval', $_POST['assigned_admins']))) : [];
+    $pollOptions = isset($_POST['poll_options']) && is_array($_POST['poll_options'])
+        ? array_values(array_filter(array_map('trim', $_POST['poll_options']), fn($v) => $v !== '')) : [];
+    $clientGroups = isset($_POST['client_groups']) && is_array($_POST['client_groups'])
+        ? array_values(array_unique(array_map('intval', $_POST['client_groups']))) : [];
+    $pageSlugs = isset($_POST['page_slugs_raw'])
+        ? array_values(array_filter(array_map('trim', explode("\n", $_POST['page_slugs_raw'])), fn($v) => $v !== ''))
+        : [];
+
+    $tags = trim($_POST['tags'] ?? '');
+    // Normalise: comma-separated, trimmed, lowercase
+    if ($tags) {
+        $tags = implode(',', array_filter(array_map(fn($t) => strtolower(trim($t)), explode(',', $tags))));
+    }
+
+    return [
+        'notice_title'         => trim($_POST['notice_title'] ?? ''),
+        'notice_content'       => $_POST['notice_content'] ?? '',
+        'show_to_clients'      => isset($_POST['show_to_clients']) ? 1 : 0,
+        'show_to_admins'       => isset($_POST['show_to_admins']) ? 1 : 0,
+        'display_type'         => $_POST['display_type'] ?? 'banner',
+        'show_again_minutes'   => (int)($_POST['show_again_minutes'] ?? 60),
+        'expandable'           => isset($_POST['expandable']) ? 1 : 0,
+        'bg_color'             => $_POST['bg_color'] ?? '#fffae6',
+        'font_color'           => $_POST['font_color'] ?? '#222222',
+        'button_enabled'       => isset($_POST['button_enabled']) ? 1 : 0,
+        'button_text'          => $_POST['button_text'] ?? '',
+        'button_link'          => $_POST['button_link'] ?? '',
+        'button_newtab'        => isset($_POST['button_newtab']) ? 1 : 0,
+        'button_bg'            => $_POST['button_bg'] ?? '#2563eb',
+        'button_color'         => $_POST['button_color'] ?? '#ffffff',
+        'ticket_enabled'       => isset($_POST['ticket_enabled']) ? 1 : 0,
+        'ticket_department_id' => $_POST['ticket_department_id'] ?? '',
+        'ticket_button_text'   => $_POST['ticket_button_text'] ?? '',
+        'poll_enabled'         => isset($_POST['poll_enabled']) ? 1 : 0,
+        'poll_question'        => $_POST['poll_question'] ?? '',
+        'poll_options'         => json_encode($pollOptions),
+        'assigned_admins'      => json_encode($assignedAdmins),
+        'mentioned_admins'     => json_encode($assignedAdmins),
+        'priority'             => $_POST['priority'] ?? 'normal',
+        'notice_timestamp'     => !empty($_POST['notice_timestamp']) ? date('Y-m-d H:i:s', strtotime($_POST['notice_timestamp'])) : null,
+        // v3
+        'expires_at'           => !empty($_POST['expires_at'])   ? date('Y-m-d H:i:s', strtotime($_POST['expires_at']))   : null,
+        'publish_at'           => !empty($_POST['publish_at'])   ? date('Y-m-d H:i:s', strtotime($_POST['publish_at']))   : null,
+        'tags'                 => $tags,
+        'client_groups'        => json_encode($clientGroups),
+        'page_slugs'           => json_encode($pageSlugs),
+        'webhook_url'          => trim($_POST['notice_webhook_url'] ?? ''),
+        'is_pinned'            => isset($_POST['is_pinned']) ? 1 : 0,
+        'updated_at'           => date('Y-m-d H:i:s'),
+    ];
+}
+}
+
 // ─── Admin Output ────────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_output')) {
 function noticebanner_output($vars) {
     noticebanner_ensure_table();
+    noticebanner_ensure_columns();
 
-    // Ensure NoticeBannerHelper (with parseMarkdown) is available in the template
     if (!class_exists('NoticeBannerHelper')) {
         require_once __DIR__ . '/hooks.php';
     }
-    $notices     = noticebanner_get_notices();
-    $departments = noticebanner_get_departments();
-    $admins      = noticebanner_get_admins();
+
+    $notices      = noticebanner_get_notices();
+    $departments  = noticebanner_get_departments();
+    $admins       = noticebanner_get_admins();
+    $clientGroups = noticebanner_get_client_groups();
+    $allTags      = noticebanner_get_all_tags();
+    $templates    = noticebanner_get_templates();
 
     $edit_notice = null;
     $message     = '';
@@ -203,69 +500,55 @@ function noticebanner_output($vars) {
             try {
                 $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
                 if ($row) {
-                    $results = json_decode($row->poll_results ?? '{}', true) ?: [];
+                    $results        = json_decode($row->poll_results ?? '{}', true) ?: [];
                     $results[$vote] = ($results[$vote] ?? 0) + 1;
-                    \WHMCS\Database\Capsule::table('mod_noticebanner')
-                        ->where('id', $nid)
+                    \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
                         ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
+                    noticebanner_log($nid, 'poll_vote', "Voted: $vote");
                 }
             } catch (\Exception $e) {}
             header('Location: ' . $_SERVER['REQUEST_URI']);
             exit;
         }
 
-        // ── Add / Edit ──
+        // ── Mark read ──
+        if (isset($_POST['mark_read'], $_POST['mark_read_id'])) {
+            $nid  = (int)$_POST['mark_read_id'];
+            $type = $_POST['mark_read_type'] ?? 'admin';
+            $eid  = (int)($_POST['mark_read_entity'] ?? ($_SESSION['adminid'] ?? 0));
+            try {
+                \WHMCS\Database\Capsule::table('mod_noticebanner_reads')->updateOrInsert(
+                    ['notice_id' => $nid, 'entity_type' => $type, 'entity_id' => $eid],
+                    ['read_at' => date('Y-m-d H:i:s')]
+                );
+                noticebanner_log($nid, 'acknowledged', "Type: $type, Entity: $eid");
+            } catch (\Exception $e) {}
+            header('Location: ' . $_SERVER['REQUEST_URI']);
+            exit;
+        }
+
+        // ── Save notice (add or edit) ──
         if (isset($_POST['save_notice'])) {
-            // assigned_admins is the single source of truth; mentioned_admins is retired
-            $assignedAdmins  = isset($_POST['assigned_admins']) && is_array($_POST['assigned_admins'])
-                ? array_values(array_unique(array_map('intval', $_POST['assigned_admins']))) : [];
-            $pollOptions = isset($_POST['poll_options']) && is_array($_POST['poll_options'])
-                ? array_values(array_filter(array_map('trim', $_POST['poll_options']), fn($v) => $v !== '')) : [];
-
-            $ts = !empty($_POST['notice_timestamp']) ? date('Y-m-d H:i:s', strtotime($_POST['notice_timestamp'])) : null;
-
-            $payload = [
-                'notice_title'         => trim($_POST['notice_title'] ?? ''),
-                'notice_content'       => $_POST['notice_content'] ?? '',
-                'show_to_clients'      => isset($_POST['show_to_clients']) ? 1 : 0,
-                'show_to_admins'       => isset($_POST['show_to_admins']) ? 1 : 0,
-                'display_type'         => $_POST['display_type'] ?? 'banner',
-                'show_again_minutes'   => (int)($_POST['show_again_minutes'] ?? 60),
-                'expandable'           => isset($_POST['expandable']) ? 1 : 0,
-                'bg_color'             => $_POST['bg_color'] ?? '#fffae6',
-                'font_color'           => $_POST['font_color'] ?? '#222222',
-                'button_enabled'       => isset($_POST['button_enabled']) ? 1 : 0,
-                'button_text'          => $_POST['button_text'] ?? '',
-                'button_link'          => $_POST['button_link'] ?? '',
-                'button_newtab'        => isset($_POST['button_newtab']) ? 1 : 0,
-                'button_bg'            => $_POST['button_bg'] ?? '#2563eb',
-                'button_color'         => $_POST['button_color'] ?? '#ffffff',
-                'ticket_enabled'       => isset($_POST['ticket_enabled']) ? 1 : 0,
-                'ticket_department_id' => $_POST['ticket_department_id'] ?? '',
-                'ticket_button_text'   => $_POST['ticket_button_text'] ?? '',
-                'poll_enabled'         => isset($_POST['poll_enabled']) ? 1 : 0,
-                'poll_question'        => $_POST['poll_question'] ?? '',
-                'poll_options'         => json_encode($pollOptions),
-                'assigned_admins'      => json_encode($assignedAdmins),
-                'mentioned_admins'     => json_encode($assignedAdmins),
-                'priority'             => $_POST['priority'] ?? 'normal',
-                'notice_timestamp'     => $ts,
-                'updated_at'           => date('Y-m-d H:i:s'),
-            ];
-
-            $editId = (int)($_POST['edit_id'] ?? 0);
+            $payload = noticebanner_build_payload();
+            $editId  = (int)($_POST['edit_id'] ?? 0);
             try {
                 if ($editId > 0) {
                     \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $editId)->update($payload);
+                    noticebanner_log($editId, 'updated', $payload['notice_title']);
+                    $saved = array_merge(['id' => $editId], $payload);
+                    noticebanner_fire_webhook($saved, 'notice.updated');
                     $message = '<div class="nb-alert nb-alert-success">Notice updated successfully.</div>';
                 } else {
                     $payload['poll_results'] = json_encode([]);
                     $payload['sort_order']   = 0;
+                    $payload['is_template']  = 0;
+                    $payload['template_name'] = '';
                     $payload['created_at']   = date('Y-m-d H:i:s');
-                    // Shift existing down
-                    \WHMCS\Database\Capsule::table('mod_noticebanner')
-                        ->increment('sort_order');
-                    \WHMCS\Database\Capsule::table('mod_noticebanner')->insert($payload);
+                    \WHMCS\Database\Capsule::table('mod_noticebanner')->increment('sort_order');
+                    $newId = \WHMCS\Database\Capsule::table('mod_noticebanner')->insertGetId($payload);
+                    noticebanner_log($newId, 'created', $payload['notice_title']);
+                    $saved = array_merge(['id' => $newId], $payload);
+                    noticebanner_fire_webhook($saved, 'notice.created');
                     $message = '<div class="nb-alert nb-alert-success">Notice added successfully.</div>';
                 }
             } catch (\Exception $e) {
@@ -273,11 +556,56 @@ function noticebanner_output($vars) {
             }
         }
 
+        // ── Save as template ──
+        elseif (isset($_POST['save_as_template'])) {
+            $srcId = (int)$_POST['save_as_template'];
+            $tplName = trim($_POST['template_name_input'] ?? '');
+            $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $srcId)->first();
+            if ($row && $tplName !== '') {
+                $copy = (array)$row;
+                unset($copy['id']);
+                $copy['is_template']   = 1;
+                $copy['template_name'] = $tplName;
+                $copy['show_to_admins']  = 0;
+                $copy['show_to_clients'] = 0;
+                $copy['created_at']    = date('Y-m-d H:i:s');
+                $copy['updated_at']    = date('Y-m-d H:i:s');
+                \WHMCS\Database\Capsule::table('mod_noticebanner')->insert($copy);
+                noticebanner_log($srcId, 'saved_as_template', $tplName);
+                $message = '<div class="nb-alert nb-alert-success">Saved as template: ' . htmlspecialchars($tplName) . '</div>';
+            }
+        }
+
+        // ── Clone notice ──
+        elseif (isset($_POST['clone_notice'])) {
+            $srcId = (int)$_POST['clone_notice'];
+            $row   = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $srcId)->first();
+            if ($row) {
+                $copy = (array)$row;
+                unset($copy['id']);
+                $copy['notice_title']    = 'Copy of ' . $copy['notice_title'];
+                $copy['show_to_admins']  = 0;
+                $copy['show_to_clients'] = 0;
+                $copy['is_template']     = 0;
+                $copy['sort_order']      = 0;
+                $copy['poll_results']    = json_encode([]);
+                $copy['created_at']      = date('Y-m-d H:i:s');
+                $copy['updated_at']      = date('Y-m-d H:i:s');
+                \WHMCS\Database\Capsule::table('mod_noticebanner')->increment('sort_order');
+                $newId = \WHMCS\Database\Capsule::table('mod_noticebanner')->insertGetId($copy);
+                noticebanner_log($newId, 'cloned', "Cloned from #$srcId");
+                $message = '<div class="nb-alert nb-alert-success">Notice cloned (inactive). Edit it above.</div>';
+            }
+        }
+
         // ── Delete ──
         elseif (isset($_POST['delete_notice'])) {
             $id = (int)$_POST['delete_notice'];
             try {
+                $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
                 \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->delete();
+                \WHMCS\Database\Capsule::table('mod_noticebanner_reads')->where('notice_id', $id)->delete();
+                noticebanner_log(null, 'deleted', $row->notice_title ?? "ID $id");
                 $message = '<div class="nb-alert nb-alert-success">Notice deleted.</div>';
             } catch (\Exception $e) {}
         }
@@ -293,6 +621,7 @@ function noticebanner_output($vars) {
                     'show_to_clients' => $enabled,
                     'updated_at'      => date('Y-m-d H:i:s'),
                 ]);
+                noticebanner_log($id, $enabled ? 'enabled' : 'disabled', $row->notice_title ?? '');
             }
         }
 
@@ -300,15 +629,15 @@ function noticebanner_output($vars) {
         elseif (isset($_POST['move_up']) || isset($_POST['move_down'])) {
             $id        = (int)($_POST['move_up'] ?? $_POST['move_down']);
             $direction = isset($_POST['move_up']) ? 'up' : 'down';
-            $notices   = noticebanner_get_notices();
-            $ids       = array_column($notices, 'id');
+            $allRows   = noticebanner_get_notices();
+            $ids       = array_column($allRows, 'id');
             $pos       = array_search($id, $ids);
             if ($pos !== false) {
                 $swapPos = $direction === 'up' ? $pos - 1 : $pos + 1;
                 if (isset($ids[$swapPos])) {
                     $swapId = $ids[$swapPos];
-                    $so1    = $notices[$pos]['sort_order'];
-                    $so2    = $notices[$swapPos]['sort_order'];
+                    $so1    = $allRows[$pos]['sort_order'];
+                    $so2    = $allRows[$swapPos]['sort_order'];
                     \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->update(['sort_order' => $so2]);
                     \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $swapId)->update(['sort_order' => $so1]);
                 }
@@ -317,19 +646,22 @@ function noticebanner_output($vars) {
 
         // ── Load edit ──
         elseif (isset($_POST['edit_load'])) {
-            $id = (int)$_POST['edit_load'];
+            $id  = (int)$_POST['edit_load'];
             $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
             if ($row) {
                 $edit_notice = (array)$row;
-                $edit_notice['poll_options']     = json_decode($edit_notice['poll_options'] ?? '[]', true) ?: [];
-                $edit_notice['poll_results']     = json_decode($edit_notice['poll_results'] ?? '{}', true) ?: [];
-                $edit_notice['assigned_admins']  = json_decode($edit_notice['assigned_admins'] ?? '[]', true) ?: [];
-                $edit_notice['mentioned_admins'] = json_decode($edit_notice['mentioned_admins'] ?? '[]', true) ?: [];
+                $edit_notice['poll_options']    = json_decode($edit_notice['poll_options'] ?? '[]', true) ?: [];
+                $edit_notice['poll_results']    = json_decode($edit_notice['poll_results'] ?? '{}', true) ?: [];
+                $edit_notice['assigned_admins'] = json_decode($edit_notice['assigned_admins'] ?? '[]', true) ?: [];
+                $edit_notice['client_groups']   = json_decode($edit_notice['client_groups'] ?? '[]', true) ?: [];
+                $edit_notice['page_slugs']      = json_decode($edit_notice['page_slugs'] ?? '[]', true) ?: [];
             }
         }
 
         // Reload after any write
-        $notices = noticebanner_get_notices();
+        $notices   = noticebanner_get_notices();
+        $allTags   = noticebanner_get_all_tags();
+        $templates = noticebanner_get_templates();
     }
 
     include __DIR__ . '/templates/admin.tpl';
