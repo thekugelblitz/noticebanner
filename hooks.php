@@ -6,6 +6,15 @@ if (!defined('WHMCS')) {
 require_once __DIR__ . '/noticebanner.php';
 require_once __DIR__ . '/widget.php';
 
+// ─── Acknowledge endpoint — intercepts POST on ANY page (client or admin) ────
+// Must run before any output so we can send JSON and exit cleanly.
+add_hook('ClientAreaPage', 1, function ($vars) {
+    NoticeBannerHelper::handleAcknowledgePost('client');
+});
+add_hook('AdminAreaPage', 1, function ($vars) {
+    NoticeBannerHelper::handleAcknowledgePost('admin');
+});
+
 // ─── Hook registrations ───────────────────────────────────────────────────────
 
 add_hook('ClientAreaHeaderOutput', 1, function ($vars) {
@@ -181,6 +190,41 @@ if (!class_exists('NoticeBannerHelper')) {
             }
         }
 
+        // ── Handle acknowledge POST on any page (called from hook, exits with JSON) ──
+        public static function handleAcknowledgePost(string $area): void {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
+            if (empty($_POST['nb_acknowledge'])) return;
+
+            $nid  = (int)($_POST['mark_read_id']     ?? 0);
+            $type = $_POST['mark_read_type']          ?? $area;
+            $eid  = (int)($_POST['mark_read_entity']  ?? 0);
+
+            // Resolve entity ID from session if not provided
+            if (!$eid) {
+                $eid = $area === 'admin'
+                    ? (int)($_SESSION['adminid'] ?? 0)
+                    : (int)($_SESSION['uid']     ?? 0);
+            }
+
+            $ok = false;
+            if ($nid && $eid) {
+                try {
+                    noticebanner_ensure_table();
+                    noticebanner_ensure_columns();
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_reads')->updateOrInsert(
+                        ['notice_id' => $nid, 'entity_type' => $type, 'entity_id' => $eid],
+                        ['read_at' => date('Y-m-d H:i:s')]
+                    );
+                    noticebanner_log($nid, 'acknowledged', "Type: $type, Entity: $eid");
+                    $ok = true;
+                } catch (\Exception $e) {}
+            }
+
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => $ok]);
+            exit;
+        }
+
         // ── Check if entity has already acknowledged a notice ────────────────
         private static function hasAcknowledged(int $noticeId, string $type, int $entityId): bool {
             if (!$entityId) return false;
@@ -326,8 +370,6 @@ if (!class_exists('NoticeBannerHelper')) {
                 $ackBtn = '';
                 $entityId   = ($area === 'admin') ? $currentAdminId : $currentClientId;
                 $entityType = $area === 'admin' ? 'admin' : 'client';
-                // Addon module URL used as the AJAX endpoint (always available)
-                $ackEndpoint = 'addonmodules.php?module=noticebanner';
                 if ($entityId) {
                     $acked    = self::hasAcknowledged((int)$n['id'], $entityType, $entityId);
                     $btnId    = 'nb-ack-' . $n['id'];
@@ -335,7 +377,7 @@ if (!class_exists('NoticeBannerHelper')) {
                         $ackBtn = '<span id="' . $btnId . '" style="display:inline-flex;align-items:center;gap:4px;padding:3px 11px;border-radius:5px;background:#dcfce7;color:#166534;font-size:12px;font-weight:700;border:1px solid #bbf7d0;flex-shrink:0;white-space:nowrap;">✓ Acknowledged</span>';
                     } else {
                         $ackBtn = '<button id="' . $btnId . '" type="button"'
-                            . ' onclick="nbAcknowledge(this,' . (int)$n['id'] . ',\'' . $entityType . '\',' . $entityId . ',\'' . $ackEndpoint . '\')"'
+                            . ' onclick="nbAcknowledge(this,' . (int)$n['id'] . ',\'' . $entityType . '\',' . $entityId . ')"'
                             . ' style="padding:3px 11px;border-radius:5px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0;white-space:nowrap;">Acknowledge</button>';
                     }
                 }
@@ -445,18 +487,19 @@ if (!class_exists('NoticeBannerHelper')) {
                 // Inject the acknowledge JS helper once per page
                 $html .= '<script>
 if(typeof nbAcknowledge==="undefined"){
-function nbAcknowledge(btn,noticeId,entityType,entityId,endpoint){
+function nbAcknowledge(btn,noticeId,entityType,entityId){
     btn.disabled=true;
-    btn.textContent="Saving…";
+    btn.textContent="Saving\u2026";
     var fd=new FormData();
-    fd.append("mark_read","1");
+    fd.append("nb_acknowledge","1");
     fd.append("mark_read_id",noticeId);
     fd.append("mark_read_type",entityType);
     fd.append("mark_read_entity",entityId);
-    fetch(endpoint,{method:"POST",body:fd,credentials:"same-origin"})
-        .then(function(r){
-            if(r.ok||r.redirected){
-                btn.outerHTML=\'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 11px;border-radius:5px;background:#dcfce7;color:#166534;font-size:12px;font-weight:700;border:1px solid #bbf7d0;flex-shrink:0;white-space:nowrap;">✓ Acknowledged</span>\';
+    fetch(window.location.href,{method:"POST",body:fd,credentials:"same-origin",headers:{"X-Requested-With":"XMLHttpRequest"}})
+        .then(function(r){return r.json();})
+        .then(function(data){
+            if(data && data.ok){
+                btn.outerHTML=\'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 11px;border-radius:5px;background:#dcfce7;color:#166534;font-size:12px;font-weight:700;border:1px solid #bbf7d0;flex-shrink:0;white-space:nowrap;">\u2713 Acknowledged</span>\';
             } else {
                 btn.disabled=false;
                 btn.textContent="Acknowledge";
