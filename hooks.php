@@ -22,15 +22,8 @@ add_hook('ClientAreaHeaderOutput', 1, function ($vars) {
     return NoticeBannerHelper::renderNotices('client');
 });
 
+// Single admin hook — avoids running the renderer 3× per request (Head/Footer/Header)
 add_hook('AdminAreaHeaderOutput', 1, function ($vars) {
-    return NoticeBannerHelper::renderNotices('admin');
-});
-
-add_hook('AdminAreaHeadOutput', 1, function ($vars) {
-    return NoticeBannerHelper::renderNotices('admin');
-});
-
-add_hook('AdminAreaFooterOutput', 1, function ($vars) {
     return NoticeBannerHelper::renderNotices('admin');
 });
 
@@ -194,6 +187,14 @@ if (!class_exists('NoticeBannerHelper')) {
         // ── Handle poll vote POST on any page (called from hook, exits with JSON) ──
         public static function handlePollVotePost(): void {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
+            if (!noticebanner_license_is_pro()) {
+                if (!empty($_POST['nb_poll_vote']) || !empty($_POST['nb_poll_reset_vote'])) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['ok' => false, 'pro_required' => true]);
+                    exit;
+                }
+                return;
+            }
 
             // ── Reset own vote ──────────────────────────────────────────────
             if (!empty($_POST['nb_poll_reset_vote'])) {
@@ -253,53 +254,63 @@ if (!class_exists('NoticeBannerHelper')) {
                     $entityType = $isAdmin ? 'admin' : 'client';
                     $entityId   = $isAdmin ? (int)$_SESSION['adminid'] : (int)($_SESSION['uid'] ?? 0);
 
+                    // Must be logged in; guests cannot vote
+                    if ($entityId <= 0) {
+                        header('Content-Type: application/json');
+                        echo json_encode(['ok' => false, 'auth_required' => true]);
+                        exit;
+                    }
+
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
+                    if (!$row || !function_exists('noticebanner_poll_vote_is_valid') || !noticebanner_poll_vote_is_valid($row, $vote)) {
+                        header('Content-Type: application/json');
+                        echo json_encode(['ok' => false, 'invalid_option' => true]);
+                        exit;
+                    }
+
                     // Block duplicate votes — return current state so JS can show it
-                    if ($entityId && self::hasVoted($nid, $entityType, $entityId)) {
+                    if (self::hasVoted($nid, $entityType, $entityId)) {
                         $existing = self::getVotedOption($nid, $entityType, $entityId);
-                        $nrow     = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
-                        $results  = $nrow ? (json_decode($nrow->poll_results ?? '{}', true) ?: []) : [];
+                        $nrow     = $row;
+                        $results  = json_decode($nrow->poll_results ?? '{}', true) ?: [];
                         $total    = array_sum($results);
                         header('Content-Type: application/json');
                         echo json_encode(['ok' => false, 'already_voted' => true, 'voted_option' => $existing, 'results' => $results, 'total' => $total]);
                         exit;
                     }
 
-                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
-                    if ($row) {
-                        $results        = json_decode($row->poll_results ?? '{}', true) ?: [];
-                        $results[$vote] = ($results[$vote] ?? 0) + 1;
-                        \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
-                            ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
+                    $voteKey = trim(html_entity_decode($vote, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                    $results = json_decode($row->poll_results ?? '{}', true) ?: [];
+                    $results[$voteKey] = ($results[$voteKey] ?? 0) + 1;
+                    \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
+                        ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
 
-                        // Cache display label
-                        $label = '';
-                        if ($entityId) {
-                            try {
-                                if ($isAdmin) {
-                                    $u = \WHMCS\Database\Capsule::table('tbladmins')->where('id', $entityId)->first(['firstname', 'lastname', 'username']);
-                                    if ($u) $label = trim($u->firstname . ' ' . $u->lastname) . ' (@' . $u->username . ')';
-                                } else {
-                                    $u = \WHMCS\Database\Capsule::table('tblclients')->where('id', $entityId)->first(['firstname', 'lastname', 'email']);
-                                    if ($u) $label = trim($u->firstname . ' ' . $u->lastname) . ' (' . $u->email . ')';
-                                }
-                            } catch (\Exception $e) {}
+                    $label = '';
+                    try {
+                        if ($isAdmin) {
+                            $u = \WHMCS\Database\Capsule::table('tbladmins')->where('id', $entityId)->first(['firstname', 'lastname', 'username']);
+                            if ($u) $label = trim($u->firstname . ' ' . $u->lastname) . ' (@' . $u->username . ')';
+                        } else {
+                            $u = \WHMCS\Database\Capsule::table('tblclients')->where('id', $entityId)->first(['firstname', 'lastname', 'email']);
+                            if ($u) $label = trim($u->firstname . ' ' . $u->lastname) . ' (' . $u->email . ')';
                         }
-                        \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->insert([
-                            'notice_id'     => $nid,
-                            'entity_type'   => $entityType,
-                            'entity_id'     => $entityId,
-                            'entity_label'  => $label,
-                            'poll_option'   => $vote,
-                            'is_predefined' => 0,
-                            'voted_at'      => date('Y-m-d H:i:s'),
-                        ]);
+                    } catch (\Exception $e) {}
 
-                        noticebanner_log($nid, 'poll_vote', "$entityType #$entityId voted: $vote");
-                        $total = array_sum($results);
-                        header('Content-Type: application/json');
-                        echo json_encode(['ok' => true, 'results' => $results, 'total' => $total, 'voted_option' => $vote]);
-                        exit;
-                    }
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->insert([
+                        'notice_id'     => $nid,
+                        'entity_type'   => $entityType,
+                        'entity_id'     => $entityId,
+                        'entity_label'  => $label,
+                        'poll_option'   => $voteKey,
+                        'is_predefined' => 0,
+                        'voted_at'      => date('Y-m-d H:i:s'),
+                    ]);
+
+                    noticebanner_log($nid, 'poll_vote', "$entityType #$entityId voted: $voteKey");
+                    $total = array_sum($results);
+                    header('Content-Type: application/json');
+                    echo json_encode(['ok' => true, 'results' => $results, 'total' => $total, 'voted_option' => $voteKey]);
+                    exit;
                 } catch (\Exception $e) {}
             }
 
@@ -312,16 +323,20 @@ if (!class_exists('NoticeBannerHelper')) {
         public static function handleAcknowledgePost(string $area): void {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
             if (empty($_POST['nb_acknowledge'])) return;
+            if (!noticebanner_license_is_pro()) {
+                header('Content-Type: application/json');
+                echo json_encode(['ok' => false, 'pro_required' => true]);
+                exit;
+            }
 
-            $nid  = (int)($_POST['mark_read_id']     ?? 0);
-            $type = $_POST['mark_read_type']          ?? $area;
-            $eid  = (int)($_POST['mark_read_entity']  ?? 0);
-
-            // Resolve entity ID from session if not provided
-            if (!$eid) {
-                $eid = $area === 'admin'
-                    ? (int)($_SESSION['adminid'] ?? 0)
-                    : (int)($_SESSION['uid']     ?? 0);
+            $nid = (int)($_POST['mark_read_id'] ?? 0);
+            // Always bind to the logged-in session — never trust POST type/entity (spoofing)
+            if ($area === 'client') {
+                $type = 'client';
+                $eid  = (int)($_SESSION['uid'] ?? 0);
+            } else {
+                $type = 'admin';
+                $eid  = (int)($_SESSION['adminid'] ?? 0);
             }
 
             $ok = false;
@@ -393,6 +408,8 @@ if (!class_exists('NoticeBannerHelper')) {
             // Use rendering mode — applies expiry + publish_at filters
             $notices = function_exists('noticebanner_get_notices') ? noticebanner_get_notices(true) : [];
             if (empty($notices)) return '';
+
+            $isPro = function_exists('noticebanner_license_is_pro') && noticebanner_license_is_pro();
 
             $currentAdminId      = ($area === 'admin')  ? self::currentAdminId()          : 0;
             $currentClientId     = ($area === 'client') ? self::currentClientId()         : 0;
@@ -472,8 +489,8 @@ if (!class_exists('NoticeBannerHelper')) {
                 $title   = htmlspecialchars($n['notice_title'] ?? '');
                 $content = self::parseMarkdown($n['notice_content'] ?? '');
 
-                // ── Pinned indicator ──
-                $pinnedHtml = !empty($n['is_pinned'])
+                // ── Pinned indicator (Pro) ──
+                $pinnedHtml = ($isPro && !empty($n['is_pinned']))
                     ? '<span style="display:inline-block;padding:1px 7px;border-radius:12px;font-size:10px;font-weight:700;background:#fef9c3;color:#854d0e;margin-left:6px;vertical-align:middle;">📌 Pinned</span>'
                     : '';
 
@@ -485,9 +502,9 @@ if (!class_exists('NoticeBannerHelper')) {
                         . '</span>';
                 }
 
-                // ── Tags ──
+                // ── Tags (Pro) ──
                 $tagsHtml = '';
-                if (!empty($n['tags'])) {
+                if ($isPro && !empty($n['tags'])) {
                     $tagsHtml = '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
                     foreach (array_map('trim', explode(',', $n['tags'])) as $tag) {
                         if ($tag === '') continue;
@@ -512,11 +529,11 @@ if (!class_exists('NoticeBannerHelper')) {
                         . '</div>';
                 }
 
-                // ── Acknowledge button — uses AJAX so no page reload needed ──
+                // ── Acknowledge button (Pro) — uses AJAX so no page reload needed ──
                 $ackBtn = '';
                 $entityId   = ($area === 'admin') ? $currentAdminId : $currentClientId;
                 $entityType = $area === 'admin' ? 'admin' : 'client';
-                if ($entityId) {
+                if ($isPro && $entityId) {
                     $acked    = self::hasAcknowledged((int)$n['id'], $entityType, $entityId);
                     $btnId    = 'nb-ack-' . $n['id'];
                     if ($acked) {
@@ -528,9 +545,9 @@ if (!class_exists('NoticeBannerHelper')) {
                     }
                 }
 
-                // ── CTA button ──
+                // ── CTA button (Pro) ──
                 $btnHtml = '';
-                if (!empty($n['button_enabled']) && !empty($n['button_text']) && !empty($n['button_link'])) {
+                if ($isPro && !empty($n['button_enabled']) && !empty($n['button_text']) && !empty($n['button_link'])) {
                     $target  = !empty($n['button_newtab']) ? ' target="_blank" rel="noopener noreferrer"' : '';
                     $btnHtml = '<a href="' . htmlspecialchars($n['button_link']) . '"' . $target
                         . ' style="display:inline-block;margin-top:10px;padding:7px 22px;border-radius:6px;'
@@ -540,9 +557,9 @@ if (!class_exists('NoticeBannerHelper')) {
                         . htmlspecialchars($n['button_text']) . '</a>';
                 }
 
-                // ── Ticket button ──
+                // ── Ticket button (Pro) ──
                 $ticketHtml = '';
-                if (!empty($n['ticket_enabled']) && !empty($n['ticket_department_id'])) {
+                if ($isPro && !empty($n['ticket_enabled']) && !empty($n['ticket_department_id'])) {
                     $deptId  = urlencode($n['ticket_department_id'] ?? '');
                     $subject = urlencode($n['notice_title'] ?? '');
                     $msgBody = urlencode(strip_tags($n['notice_content'] ?? ''));
@@ -557,9 +574,9 @@ if (!class_exists('NoticeBannerHelper')) {
                         . $btnTxt . '</a>';
                 }
 
-                // ── Poll ──
+                // ── Poll (Pro) ──
                 $pollHtml = '';
-                if (!empty($n['poll_enabled']) && !empty($n['poll_question']) && !empty($n['poll_options'])) {
+                if ($isPro && !empty($n['poll_enabled']) && !empty($n['poll_question']) && !empty($n['poll_options'])) {
                     $results    = $n['poll_results'] ?? [];
                     $total      = array_sum($results);
                     $pollDivId  = 'nb-poll-' . (int)$n['id'];
@@ -760,6 +777,10 @@ function nbPollVote(btn,noticeId){
                 btnWrap.innerHTML=\'<span style="font-size:12px;background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-weight:600;">\u2713 You voted: \'+data.voted_option+\'</span>\'
                     +\'<button type="button" onclick="nbPollReset(this,\'+noticeId+\')" style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">\u21ba Change Vote</button>\'
                     +\'<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">\'+data.total+\' total vote\'+(data.total===1?"":"s")+\'</span>\';
+            } else if(data&&data.auth_required){
+                alert("Please log in to vote.");
+                btn.disabled=false;
+                btn.textContent="Vote";
             } else if(data&&data.already_voted){
                 // Already voted — show current state
                 wrap.querySelectorAll("input[type=radio]").forEach(function(i){i.disabled=true;});

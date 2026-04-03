@@ -3,6 +3,9 @@ if (!defined('WHMCS')) {
     die('Access Denied');
 }
 
+// ─── License engine ──────────────────────────────────────────────────────────
+require_once __DIR__ . '/license.php';
+
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_config')) {
@@ -10,7 +13,7 @@ function noticebanner_config() {
     return [
         'name'        => 'Notice Banner',
         'description' => 'Display admin/client notices as banners with markdown, polls, @mentions, assignments, scheduling and more.',
-        'version'     => '3.0',
+        'version'     => '3.1.0',
         'author'      => 'Dhruv from HostingSpell',
         'fields'      => [
             'webhook_url' => [
@@ -18,6 +21,26 @@ function noticebanner_config() {
                 'Type'         => 'text',
                 'Size'         => '60',
                 'Description'  => 'POST JSON payload to this URL whenever a notice is created or updated (Slack/Discord/custom). Leave blank to disable.',
+            ],
+            'license_key' => [
+                'FriendlyName' => 'License Key',
+                'Type'         => 'text',
+                'Size'         => '60',
+                'Description'  => 'Enter your HostingSpell Pro license key to unlock advanced features.',
+            ],
+            'free_max_notices' => [
+                'FriendlyName' => 'Free Tier Max Notices',
+                'Type'         => 'text',
+                'Size'         => '5',
+                'Default'      => '3',
+                'Description'  => 'Maximum number of active notices allowed without a Pro license (default: 3).',
+            ],
+            'license_check_interval_hours' => [
+                'FriendlyName' => 'License Check Interval (hours)',
+                'Type'         => 'text',
+                'Size'         => '5',
+                'Default'      => '24',
+                'Description'  => 'How often to re-validate the license key with the HostingSpell server (default: 24).',
             ],
         ],
     ];
@@ -30,7 +53,7 @@ if (!function_exists('noticebanner_activate')) {
 function noticebanner_activate() {
     noticebanner_ensure_table();
     noticebanner_ensure_columns();
-    return ['status' => 'success', 'description' => 'Notice Banner v3.0 activated. Database ready.'];
+    return ['status' => 'success', 'description' => 'Notice Banner v3.1.0 activated. Database ready.'];
 }
 }
 
@@ -238,6 +261,41 @@ function noticebanner_log($noticeId, string $action, string $detail = '') {
 }
 }
 
+// ─── Webhook URL safety (blocks SSRF to internal networks) ───────────────────
+
+if (!function_exists('noticebanner_is_safe_webhook_url')) {
+function noticebanner_is_safe_webhook_url(string $url): bool {
+    $url = trim($url);
+    if ($url === '') return false;
+    $p = @parse_url($url);
+    if (!$p || empty($p['scheme']) || empty($p['host'])) return false;
+    $scheme = strtolower((string)$p['scheme']);
+    if (!in_array($scheme, ['https', 'http'], true)) return false;
+    $host = strtolower((string)$p['host']);
+    if ($host === 'localhost' || $host === '0' || preg_match('/(^|\\.)localhost$/', $host)) return false;
+    // Numeric IP: reject private / reserved / link-local
+    if (filter_var($host, FILTER_VALIDATE_IP)) {
+        return (bool)filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE);
+    }
+    return true;
+}
+}
+
+// ─── Validate poll vote string against a notice row ──────────────────────────
+
+if (!function_exists('noticebanner_poll_vote_is_valid')) {
+function noticebanner_poll_vote_is_valid($row, string $vote): bool {
+    if (empty($row) || empty($row->poll_enabled)) return false;
+    $vote = trim(html_entity_decode($vote, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    if ($vote === '') return false;
+    $opts = array_map(
+        fn($o) => trim(html_entity_decode((string)$o, ENT_QUOTES | ENT_HTML5, 'UTF-8')),
+        json_decode($row->poll_options ?? '[]', true) ?: []
+    );
+    return in_array($vote, $opts, true);
+}
+}
+
 // ─── Webhook helper ───────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_fire_webhook')) {
@@ -253,7 +311,7 @@ function noticebanner_fire_webhook(array $notice, string $event) {
             $url = trim($cfg ?? '');
         } catch (\Exception $e) {}
     }
-    if (!$url) return;
+    if (!$url || !noticebanner_is_safe_webhook_url($url)) return;
 
     $payload = json_encode([
         'event'           => $event,
@@ -665,16 +723,25 @@ function noticebanner_build_payload(): array {
         $tags = implode(',', array_filter(array_map(fn($t) => strtolower(trim($t)), explode(',', $tags))));
     }
 
-    return [
-        'notice_title'         => trim($_POST['notice_title'] ?? ''),
-        'notice_content'       => $_POST['notice_content'] ?? '',
-        'show_to_clients'      => isset($_POST['show_to_clients']) ? 1 : 0,
-        'show_to_admins'       => isset($_POST['show_to_admins']) ? 1 : 0,
-        'display_type'         => $_POST['display_type'] ?? 'banner',
-        'show_again_minutes'   => (int)($_POST['show_again_minutes'] ?? 60),
-        'expandable'           => isset($_POST['expandable']) ? 1 : 0,
-        'bg_color'             => $_POST['bg_color'] ?? '#fffae6',
-        'font_color'           => $_POST['font_color'] ?? '#222222',
+    $isPro = noticebanner_license_is_pro();
+
+    $base = [
+        'notice_title'       => trim($_POST['notice_title'] ?? ''),
+        'notice_content'     => $_POST['notice_content'] ?? '',
+        'show_to_clients'    => isset($_POST['show_to_clients']) ? 1 : 0,
+        'show_to_admins'     => isset($_POST['show_to_admins']) ? 1 : 0,
+        'display_type'       => $_POST['display_type'] ?? 'banner',
+        'show_again_minutes' => (int)($_POST['show_again_minutes'] ?? 60),
+        'expandable'         => isset($_POST['expandable']) ? 1 : 0,
+        'bg_color'           => $_POST['bg_color'] ?? '#fffae6',
+        'font_color'         => $_POST['font_color'] ?? '#222222',
+        'priority'           => $_POST['priority'] ?? 'normal',
+        'notice_timestamp'   => !empty($_POST['notice_timestamp']) ? date('Y-m-d H:i:s', strtotime($_POST['notice_timestamp'])) : null,
+        'updated_at'         => date('Y-m-d H:i:s'),
+    ];
+
+    // Pro-only fields — silently zeroed/nulled when not licensed
+    $pro = $isPro ? [
         'button_enabled'       => isset($_POST['button_enabled']) ? 1 : 0,
         'button_text'          => $_POST['button_text'] ?? '',
         'button_link'          => $_POST['button_link'] ?? '',
@@ -689,11 +756,8 @@ function noticebanner_build_payload(): array {
         'poll_options'         => json_encode($pollOptions),
         'assigned_admins'      => json_encode($assignedAdmins),
         'mentioned_admins'     => json_encode($assignedAdmins),
-        'priority'             => $_POST['priority'] ?? 'normal',
-        'notice_timestamp'     => !empty($_POST['notice_timestamp']) ? date('Y-m-d H:i:s', strtotime($_POST['notice_timestamp'])) : null,
-        // v3
-        'expires_at'           => !empty($_POST['expires_at'])   ? date('Y-m-d H:i:s', strtotime($_POST['expires_at']))   : null,
-        'publish_at'           => !empty($_POST['publish_at'])   ? date('Y-m-d H:i:s', strtotime($_POST['publish_at']))   : null,
+        'expires_at'           => !empty($_POST['expires_at']) ? date('Y-m-d H:i:s', strtotime($_POST['expires_at'])) : null,
+        'publish_at'           => !empty($_POST['publish_at']) ? date('Y-m-d H:i:s', strtotime($_POST['publish_at'])) : null,
         'tags'                 => $tags,
         'client_groups'        => json_encode($clientGroups),
         'target_clients'       => json_encode($targetClients),
@@ -702,8 +766,34 @@ function noticebanner_build_payload(): array {
         'page_slugs'           => json_encode($pageSlugs),
         'webhook_url'          => trim($_POST['notice_webhook_url'] ?? ''),
         'is_pinned'            => isset($_POST['is_pinned']) ? 1 : 0,
-        'updated_at'           => date('Y-m-d H:i:s'),
+    ] : [
+        'button_enabled'       => 0,
+        'button_text'          => '',
+        'button_link'          => '',
+        'button_newtab'        => 0,
+        'button_bg'            => '#2563eb',
+        'button_color'         => '#ffffff',
+        'ticket_enabled'       => 0,
+        'ticket_department_id' => '',
+        'ticket_button_text'   => '',
+        'poll_enabled'         => 0,
+        'poll_question'        => '',
+        'poll_options'         => json_encode([]),
+        'assigned_admins'      => json_encode([]),
+        'mentioned_admins'     => json_encode([]),
+        'expires_at'           => null,
+        'publish_at'           => null,
+        'tags'                 => '',
+        'client_groups'        => json_encode([]),
+        'target_clients'       => json_encode([]),
+        'target_servers'       => json_encode([]),
+        'target_products'      => json_encode([]),
+        'page_slugs'           => json_encode([]),
+        'webhook_url'          => '',
+        'is_pinned'            => 0,
     ];
+
+    return array_merge($base, $pro);
 }
 }
 
@@ -714,8 +804,13 @@ function noticebanner_output($vars) {
     noticebanner_ensure_table();
     noticebanner_ensure_columns();
 
-    // ── Export poll votes: ?nb_export_votes=<id>&format=csv|json ──
+    // ── Export poll votes: ?nb_export_votes=<id>&format=csv|json (Pro) ──
     if (!empty($_GET['nb_export_votes'])) {
+        if (!noticebanner_license_is_pro()) {
+            header('HTTP/1.1 403 Forbidden');
+            echo 'Pro license required for export.';
+            exit;
+        }
         $nid    = (int)$_GET['nb_export_votes'];
         $format = strtolower(trim($_GET['format'] ?? 'csv'));
 
@@ -729,7 +824,7 @@ function noticebanner_output($vars) {
 
         $slug = preg_replace('/[^a-z0-9]+/', '-', strtolower($question));
         $slug = trim($slug, '-') ?: 'poll';
-        $filename = 'poll-votes-' . $nid . '-' . $slug;
+        $filename = 'poll-votes-' . $nid . '-' . preg_replace('/[^a-z0-9._-]+/i', '', $slug);
 
         if ($format === 'json') {
             // ── JSON export ──
@@ -801,23 +896,6 @@ function noticebanner_output($vars) {
         exit;
     }
 
-    // ── Debug: ?nb_debug_depts=1 — dumps raw department query info ──
-    if (!empty($_GET['nb_debug_depts'])) {
-        header('Content-Type: text/plain');
-        foreach (['tblticketdepartments', 'tblsupportdepts', 'tblsupportdepartments'] as $tbl) {
-            echo "=== $tbl ===\n";
-            try {
-                $rows = \WHMCS\Database\Capsule::table($tbl)->get()->toArray();
-                echo count($rows) . " rows\n";
-                foreach ($rows as $r) { echo json_encode($r) . "\n"; }
-            } catch (\Exception $e) {
-                echo "ERROR: " . $e->getMessage() . "\n";
-            }
-            echo "\n";
-        }
-        exit;
-    }
-
     if (!class_exists('NoticeBannerHelper')) {
         require_once __DIR__ . '/hooks.php';
     }
@@ -870,9 +948,13 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Predefined votes (admin only) ──────────────────────────────────────
+        // ── Predefined votes (admin only, Pro) ────────────────────────────────
         // Form sends parallel arrays: predefined_poll_option_hex[] + predefined_poll_add_counts[]
         if (isset($_POST['predefined_poll_vote'], $_POST['predefined_poll_notice_id'])) {
+            if (!noticebanner_license_is_pro()) {
+                $message = '<div class="nb-alert nb-alert-danger">&#128274; Predefined votes require a Pro license.</div>';
+                goto nb_post_end;
+            }
             $nid   = (int)$_POST['predefined_poll_notice_id'];
             $label = trim($_POST['predefined_poll_label'] ?? '') ?: 'Predefined Vote';
             $hexes = isset($_POST['predefined_poll_option_hex']) && is_array($_POST['predefined_poll_option_hex'])
@@ -1044,8 +1126,12 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Add predefined acknowledgement ──
+        // ── Add predefined acknowledgement (Pro) ──
         if (isset($_POST['add_predefined_ack'])) {
+            if (!noticebanner_license_is_pro()) {
+                $message = '<div class="nb-alert nb-alert-danger">&#128274; Predefined acknowledgements require a Pro license.</div>';
+                goto nb_post_end;
+            }
             $nid  = (int)($_POST['predefined_ack_notice_id'] ?? 0);
             $type = $_POST['predefined_ack_type'] ?? 'admin';
             $eids = isset($_POST['predefined_ack_entities']) && is_array($_POST['predefined_ack_entities'])
@@ -1068,33 +1154,49 @@ function noticebanner_output($vars) {
         if (isset($_POST['save_notice'])) {
             $payload = noticebanner_build_payload();
             $editId  = (int)($_POST['edit_id'] ?? 0);
-            try {
-                if ($editId > 0) {
-                    \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $editId)->update($payload);
-                    noticebanner_log($editId, 'updated', $payload['notice_title']);
-                    $saved = array_merge(['id' => $editId], $payload);
-                    noticebanner_fire_webhook($saved, 'notice.updated');
-                    $message = '<div class="nb-alert nb-alert-success">Notice updated successfully.</div>';
-                } else {
-                    $payload['poll_results'] = json_encode([]);
-                    $payload['sort_order']   = 0;
-                    $payload['is_template']  = 0;
-                    $payload['template_name'] = '';
-                    $payload['created_at']   = date('Y-m-d H:i:s');
-                    \WHMCS\Database\Capsule::table('mod_noticebanner')->increment('sort_order');
-                    $newId = \WHMCS\Database\Capsule::table('mod_noticebanner')->insertGetId($payload);
-                    noticebanner_log($newId, 'created', $payload['notice_title']);
-                    $saved = array_merge(['id' => $newId], $payload);
-                    noticebanner_fire_webhook($saved, 'notice.created');
-                    $message = '<div class="nb-alert nb-alert-success">Notice added successfully.</div>';
+
+            // Free-tier cap: block new notices when limit reached and no Pro license
+            if ($editId === 0 && noticebanner_free_cap_reached()) {
+                $cap = noticebanner_free_notice_cap();
+                $message = '<div class="nb-alert nb-alert-danger">'
+                    . '&#128274; Free tier limit reached ('
+                    . htmlspecialchars((string)$cap)
+                    . ' active notice' . ($cap === 1 ? '' : 's') . '). '
+                    . '<a href="https://hostingspell.com" target="_blank" rel="noopener">Upgrade to Pro</a> '
+                    . 'or delete an existing notice to continue.</div>';
+            } else {
+                try {
+                    if ($editId > 0) {
+                        \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $editId)->update($payload);
+                        noticebanner_log($editId, 'updated', $payload['notice_title']);
+                        $saved = array_merge(['id' => $editId], $payload);
+                        noticebanner_fire_webhook($saved, 'notice.updated');
+                        $message = '<div class="nb-alert nb-alert-success">Notice updated successfully.</div>';
+                    } else {
+                        $payload['poll_results'] = json_encode([]);
+                        $payload['sort_order']   = 0;
+                        $payload['is_template']  = 0;
+                        $payload['template_name'] = '';
+                        $payload['created_at']   = date('Y-m-d H:i:s');
+                        \WHMCS\Database\Capsule::table('mod_noticebanner')->increment('sort_order');
+                        $newId = \WHMCS\Database\Capsule::table('mod_noticebanner')->insertGetId($payload);
+                        noticebanner_log($newId, 'created', $payload['notice_title']);
+                        $saved = array_merge(['id' => $newId], $payload);
+                        noticebanner_fire_webhook($saved, 'notice.created');
+                        $message = '<div class="nb-alert nb-alert-success">Notice added successfully.</div>';
+                    }
+                } catch (\Exception $e) {
+                    $message = '<div class="nb-alert nb-alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
                 }
-            } catch (\Exception $e) {
-                $message = '<div class="nb-alert nb-alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
             }
         }
 
-        // ── Save as template ──
+        // ── Save as template (Pro) ──
         elseif (isset($_POST['save_as_template'])) {
+            if (!noticebanner_license_is_pro()) {
+                $message = '<div class="nb-alert nb-alert-danger">&#128274; Templates require a Pro license.</div>';
+                goto nb_post_end;
+            }
             $srcId = (int)$_POST['save_as_template'];
             $tplName = trim($_POST['template_name_input'] ?? '');
             $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $srcId)->first();
@@ -1113,8 +1215,12 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── Clone notice ──
+        // ── Clone notice (Pro) ──
         elseif (isset($_POST['clone_notice'])) {
+            if (!noticebanner_license_is_pro()) {
+                $message = '<div class="nb-alert nb-alert-danger">&#128274; Cloning notices requires a Pro license.</div>';
+                goto nb_post_end;
+            }
             $srcId = (int)$_POST['clone_notice'];
             $row   = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $srcId)->first();
             if ($row) {
@@ -1201,11 +1307,23 @@ function noticebanner_output($vars) {
             }
         }
 
+        // ── License: validate now ──
+        if (isset($_POST['nb_license_validate_now'])) {
+            noticebanner_license_refresh(true);
+            $message = '<div class="nb-alert nb-alert-success">License validation refreshed.</div>';
+        }
+
+        nb_post_end:
         // Reload after any write
         $notices   = noticebanner_get_notices();
         $allTags   = noticebanner_get_all_tags();
         $templates = noticebanner_get_templates();
     }
+
+    $isPro         = noticebanner_license_is_pro();
+    $licenseStatus = noticebanner_license_status();
+    $freeCap       = noticebanner_free_notice_cap();
+    $activeCount   = (int)\WHMCS\Database\Capsule::table('mod_noticebanner')->where('is_template', 0)->count();
 
     include __DIR__ . '/templates/admin.tpl';
 }

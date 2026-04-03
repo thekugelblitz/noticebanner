@@ -1,0 +1,55 @@
+Notice Banner — distribution & IonCube Encoder (v14+)
+========================================================
+
+This package is shipped as plain PHP. IonCube is optional: you encode files
+yourself with the commercial IonCube PHP Encoder (version 14 or newer) before
+reselling.
+
+What to encode
+--------------
+Encode these PHP entry points (recommended):
+  • noticebanner.php
+  • hooks.php
+  • widget.php
+  • license.php           — Contains license validation logic; encode to protect it.
+
+Leave as plain text (do not encode):
+  • templates/admin.tpl   — WHMCS loads this as a template; encoding breaks it.
+
+Target PHP version
+------------------
+Match the PHP version on your customers’ servers (e.g. PHP 8.1 or 8.2 as
+required by your WHMCS release). The encoder and loader major versions must
+match the runtime PHP.
+
+Customer servers
+----------------
+They must install the matching IonCube Loader extension. Test after encoding:
+module activate, save notice, client-area banner, poll vote, admin widget.
+
+Outbound HTTPS requirement (IMPORTANT)
+--------------------------------------
+The license engine (license.php) makes an outbound HTTPS POST to:
+
+  https://hostingspell.com/api/noticebanner-license/v1/validate
+
+Customer servers MUST be able to reach this URL over HTTPS (port 443).
+If the server is behind a firewall or has outbound HTTPS blocked, the
+license check will fail. The module will then use the cached state for up
+to 72 hours (grace period) before downgrading to Free tier.
+
+Inform customers of this requirement in your product documentation.
+
+RSA public key
+--------------
+The embedded RSA-2048 public key in license.php is used to verify signed
+responses from the HostingSpell API. The private key lives only on
+hostingspell.com and is never distributed. Replace the placeholder key in
+license.php with your real public key before encoding and distributing.
+
+Security note
+-------------
+Encoded files do not replace secure coding. This build already avoids trusting
+client POST for identity on acknowledge, validates poll options server-side,
+restricts webhooks to public http(s) URLs to reduce SSRF risk, and verifies
+license responses with RSA-SHA256 signatures before trusting them.

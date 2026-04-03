@@ -35,6 +35,9 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         if (function_exists('noticebanner_ensure_table')) {
             noticebanner_ensure_table();
         }
+        if (function_exists('noticebanner_ensure_columns')) {
+            noticebanner_ensure_columns();
+        }
         $notices = [];
         try {
             $rows = Capsule::table('mod_noticebanner')
@@ -66,6 +69,9 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
     private function handlePost(): void {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['nb_widget_action'])) return;
 
+        // Widget CRUD is Pro-only
+        if (!function_exists('noticebanner_license_is_pro') || !noticebanner_license_is_pro()) return;
+
         $action = $_POST['nb_widget_action'];
         $id     = (int)($_POST['nb_id'] ?? 0);
 
@@ -93,7 +99,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
             } elseif ($action === 'add') {
                 $title   = trim($_POST['nb_title'] ?? '');
                 $content = trim($_POST['nb_content'] ?? '');
-                if ($title !== '') {
+                if ($title !== '' && !noticebanner_free_cap_reached()) {
                     Capsule::table('mod_noticebanner')->increment('sort_order');
                     Capsule::table('mod_noticebanner')->insert([
                         'notice_title'         => $title,

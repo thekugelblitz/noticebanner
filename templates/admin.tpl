@@ -161,6 +161,22 @@ $now = date('Y-m-d H:i:s');
     .nb-grid, .nb-grid-3, .nb-grid-4 { grid-template-columns: 1fr; }
     .nb-span2, .nb-span3, .nb-span4 { grid-column: span 1; }
 }
+
+/* ── Pro lock badge ── */
+.nb-pro-lock { display:inline-flex;align-items:center;gap:4px;background:#fef9c3;color:#854d0e;border:1px solid #fde68a;border-radius:999px;padding:1px 9px;font-size:11px;font-weight:700;margin-left:6px;vertical-align:middle; }
+.nb-pro-section { opacity:0.55;pointer-events:none;user-select:none;position:relative; }
+.nb-pro-section::after { content:'🔒 Pro'; position:absolute;top:6px;right:10px;font-size:11px;font-weight:700;color:#854d0e;background:#fef9c3;border:1px solid #fde68a;border-radius:999px;padding:1px 8px; }
+
+/* ── License status badge ── */
+.nb-lic-valid   { background:#dcfce7;color:#166534;border:1px solid #bbf7d0; }
+.nb-lic-invalid { background:#fee2e2;color:#991b1b;border:1px solid #fecaca; }
+.nb-lic-error   { background:#fef9c3;color:#854d0e;border:1px solid #fde68a; }
+.nb-lic-unknown,.nb-lic-no_key { background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0; }
+.nb-lic-badge { display:inline-flex;align-items:center;gap:5px;padding:4px 14px;border-radius:999px;font-size:13px;font-weight:700; }
+
+/* ── Main tab panes ── */
+.nb-main-tab-pane { display:none; }
+.nb-main-tab-pane.active { display:block; }
 </style>
 
 <div id="nb-wrap">
@@ -168,9 +184,37 @@ $now = date('Y-m-d H:i:s');
 <?php echo $message ?? ''; ?>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
-     TEMPLATE PICKER (shown when templates exist and not editing)
+     MAIN TAB BAR
 ══════════════════════════════════════════════════════════════════════════ -->
-<?php if (!empty($templates) && !isset($edit_notice)): ?>
+<?php
+$licStatus = $licenseStatus['status'] ?? 'unknown';
+$licPlan   = $licenseStatus['plan'] ?? 'free';
+$licBadgeClass = in_array($licStatus, ['valid'], true) ? 'nb-lic-valid'
+    : (in_array($licStatus, ['invalid', 'domain_mismatch'], true) ? 'nb-lic-invalid'
+    : (in_array($licStatus, ['error'], true) ? 'nb-lic-error' : 'nb-lic-unknown'));
+$licBadgeLabel = $isPro ? '✓ Pro Active' : (($licStatus === 'no_key' || $licStatus === 'unknown') ? '🔒 Free Tier' : '⚠ ' . ucfirst(str_replace('_', ' ', $licStatus)));
+?>
+<div class="nb-tabs" id="nb-main-tabs">
+    <span class="nb-tab active" onclick="nbMainTab('notices',this)">📋 Notices
+        <?php if (!$isPro): ?>
+        <span style="font-size:11px;font-weight:600;color:#854d0e;background:#fef9c3;border:1px solid #fde68a;border-radius:999px;padding:1px 7px;margin-left:4px;"><?php echo $activeCount; ?>/<?php echo $freeCap; ?></span>
+        <?php endif; ?>
+    </span>
+    <span class="nb-tab" onclick="nbMainTab('license',this)">🔑 License &amp; Settings
+        <span class="nb-lic-badge <?php echo $licBadgeClass; ?>" style="padding:1px 8px;font-size:11px;margin-left:4px;"><?php echo htmlspecialchars($licBadgeLabel); ?></span>
+    </span>
+    <span class="nb-tab" onclick="nbMainTab('log',this)">📜 Activity Log</span>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB PANE: NOTICES
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="nb-pane-notices" class="nb-main-tab-pane active">
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TEMPLATE PICKER (Pro only — shown when templates exist and not editing)
+══════════════════════════════════════════════════════════════════════════ -->
+<?php if ($isPro && !empty($templates) && !isset($edit_notice)): ?>
 <div class="nb-card" style="border-color:#e0e7ff;background:#f5f3ff;">
     <div class="nb-card-body" style="padding:14px 22px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
@@ -210,6 +254,11 @@ $now = date('Y-m-d H:i:s');
         <?php endif; ?>
     </div>
     <div class="nb-card-body">
+        <?php if (!$isPro): ?>
+        <div style="background:#fef9c3;border:1px solid #fde68a;border-radius:8px;padding:10px 16px;margin-bottom:16px;font-size:13px;color:#854d0e;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <span>🔒 <strong>Free Tier</strong> — <?php echo $activeCount; ?>/<?php echo $freeCap; ?> notices used. Advanced fields (polls, webhooks, targeting, tags, scheduling, etc.) require a <a href="https://hostingspell.com" target="_blank" rel="noopener" style="color:#854d0e;font-weight:700;">Pro license</a>.</span>
+        </div>
+        <?php endif; ?>
         <form method="post" id="nb-form">
             <?php if (isset($edit_notice)): ?>
                 <input type="hidden" name="edit_id" value="<?php echo (int)$edit_notice['id']; ?>">
@@ -328,7 +377,8 @@ $now = date('Y-m-d H:i:s');
                 </div>
             </div>
 
-            <!-- Scheduling: publish_at + expires_at -->
+            <?php if ($isPro): ?>
+            <!-- Scheduling: publish_at + expires_at (Pro) -->
             <div class="nb-grid" style="margin-top:14px;">
                 <div class="nb-field">
                     <label>
@@ -347,8 +397,10 @@ $now = date('Y-m-d H:i:s');
                         value="<?php echo isset($edit_notice['expires_at']) && $edit_notice['expires_at'] ? date('Y-m-d\TH:i', strtotime($edit_notice['expires_at'])) : ''; ?>">
                 </div>
             </div>
+            <?php endif; ?>
 
-            <!-- Tags -->
+            <?php if ($isPro): ?>
+            <!-- Tags (Pro) -->
             <div class="nb-field" style="margin-top:14px;">
                 <label>
                     🏷 Tags
@@ -374,8 +426,10 @@ $now = date('Y-m-d H:i:s');
                 </div>
                 <input type="hidden" name="tags" id="nb-tags-hidden" value="<?php echo htmlspecialchars($edit_notice['tags'] ?? ''); ?>">
             </div>
+            <?php endif; // Pro: Tags ?>
 
-            <!-- CTA Button options -->
+            <?php if ($isPro): ?>
+            <!-- CTA Button options (Pro) -->
             <div id="nb-btn-opts" style="display:<?php echo !empty($edit_notice['button_enabled']) ? 'block' : 'none'; ?>;margin-top:14px;padding:14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;">
                 <div style="font-size:13px;font-weight:700;color:#64748b;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.05em;">CTA Button</div>
                 <div class="nb-grid">
@@ -664,6 +718,7 @@ $now = date('Y-m-d H:i:s');
                     </div>
                 </div>
             </div>
+            <?php endif; // Pro: CTA/Ticket/Poll/Targeting/Webhook ?>
 
             <div style="margin-top:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button type="submit" name="save_notice" class="nb-btn nb-btn-primary">
@@ -672,11 +727,13 @@ $now = date('Y-m-d H:i:s');
                 </button>
                 <?php if (isset($edit_notice)): ?>
                     <a href="<?php echo $_SERVER['REQUEST_URI']; ?>" class="nb-btn nb-btn-ghost">Cancel</a>
-                    <!-- Save as Template -->
+                    <?php if ($isPro): ?>
+                    <!-- Save as Template (Pro) -->
                     <button type="button" class="nb-btn nb-btn-ghost" onclick="nbOpenSaveTemplate(<?php echo (int)$edit_notice['id']; ?>)">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                         Save as Template
                     </button>
+                    <?php endif; ?>
                 <?php endif; ?>
             </div>
         </form>
@@ -1116,13 +1173,15 @@ $now = date('Y-m-d H:i:s');
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         </button>
                     </form>
-                    <!-- Clone -->
+                    <?php if ($isPro): ?>
+                    <!-- Clone (Pro) -->
                     <form method="post" style="display:inline;" onsubmit="return confirm('Clone this notice?');">
                         <input type="hidden" name="clone_notice" value="<?php echo (int)$n['id']; ?>">
                         <button type="submit" class="nb-btn nb-btn-ghost nb-btn-icon" title="Clone">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>
                     </form>
+                    <?php endif; ?>
                     <!-- Move up -->
                     <form method="post" style="display:inline;">
                         <input type="hidden" name="move_up" value="<?php echo (int)$n['id']; ?>">
@@ -1222,10 +1281,210 @@ try {
     </div>
 </div>
 
+</div><!-- /nb-pane-notices -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB PANE: LICENSE & SETTINGS
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="nb-pane-license" class="nb-main-tab-pane">
+<?php
+$licKey        = noticebanner_license_get_key();
+$licIssuedTo   = $licenseStatus['issued_to'] ?? '';
+$licExpires    = $licenseStatus['license_expires_at'] ?? null;
+$licLastOk     = $licenseStatus['last_ok_at'] ?? null;
+$licNextCheck  = $licenseStatus['next_check_after'] ?? null;
+$licLastError  = $licenseStatus['last_error'] ?? null;
+?>
+
+<!-- License status card -->
+<div class="nb-card">
+    <div class="nb-card-header">
+        <h2>🔑 License Status</h2>
+        <span class="nb-lic-badge <?php echo $licBadgeClass; ?>"><?php echo htmlspecialchars($licBadgeLabel); ?></span>
+    </div>
+    <div class="nb-card-body">
+        <div class="nb-grid">
+            <div class="nb-field">
+                <label>Plan</label>
+                <div style="padding:8px 0;font-size:15px;font-weight:700;color:<?php echo $isPro ? '#166534' : '#854d0e'; ?>;">
+                    <?php echo $isPro ? '⭐ Pro' : '🔒 Free'; ?>
+                </div>
+            </div>
+            <div class="nb-field">
+                <label>Status</label>
+                <div style="padding:8px 0;font-size:14px;">
+                    <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $licStatus))); ?>
+                </div>
+            </div>
+            <?php if ($licIssuedTo): ?>
+            <div class="nb-field">
+                <label>Issued To</label>
+                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars($licIssuedTo); ?></div>
+            </div>
+            <?php endif; ?>
+            <?php if ($licExpires): ?>
+            <div class="nb-field">
+                <label>Expires At</label>
+                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(date('M j, Y', strtotime($licExpires))); ?></div>
+            </div>
+            <?php endif; ?>
+            <?php if ($licLastOk): ?>
+            <div class="nb-field">
+                <label>Last Validated</label>
+                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(date('M j, Y g:ia', strtotime($licLastOk))); ?></div>
+            </div>
+            <?php endif; ?>
+            <?php if ($licNextCheck): ?>
+            <div class="nb-field">
+                <label>Next Check</label>
+                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(date('M j, Y g:ia', strtotime($licNextCheck))); ?></div>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php if ($licLastError): ?>
+        <div class="nb-alert nb-alert-danger" style="margin-top:12px;">⚠ <?php echo htmlspecialchars($licLastError); ?></div>
+        <?php endif; ?>
+        <form method="post" style="margin-top:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+            <button type="submit" name="nb_license_validate_now" value="1" class="nb-btn nb-btn-primary nb-btn-sm">↻ Validate Now</button>
+            <a href="https://hostingspell.com" target="_blank" rel="noopener" class="nb-btn nb-btn-ghost nb-btn-sm">🛒 Get Pro License</a>
+            <a href="https://hostingspell.com/support" target="_blank" rel="noopener" class="nb-btn nb-btn-ghost nb-btn-sm">💬 Support</a>
+        </form>
+    </div>
+</div>
+
+<!-- Settings card -->
+<div class="nb-card">
+    <div class="nb-card-header">
+        <h2>⚙ Plugin Settings</h2>
+    </div>
+    <div class="nb-card-body">
+        <p style="font-size:13px;color:#64748b;margin:0 0 16px;">These settings are stored in WHMCS addon module configuration. To change them, go to
+            <strong>Setup → Addon Modules → Notice Banner → Configure</strong>.
+        </p>
+        <div class="nb-grid">
+            <div class="nb-field">
+                <label>License Key</label>
+                <div style="padding:8px 0;font-size:14px;font-family:monospace;">
+                    <?php echo $licKey ? (substr($licKey, 0, 8) . str_repeat('•', min(24, max(0, strlen($licKey) - 8)))) : '<em style="color:#94a3b8;">Not set</em>'; ?>
+                </div>
+            </div>
+            <div class="nb-field">
+                <label>Free Tier Max Notices</label>
+                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars((string)$freeCap); ?></div>
+            </div>
+            <div class="nb-field">
+                <label>License Check Interval</label>
+                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(noticebanner_license_get_setting('license_check_interval_hours', '24')); ?> hours</div>
+            </div>
+            <div class="nb-field">
+                <label>Module Version</label>
+                <div style="padding:8px 0;font-size:14px;">3.1.0</div>
+            </div>
+            <div class="nb-field">
+                <label>PHP Version</label>
+                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(PHP_VERSION); ?></div>
+            </div>
+            <div class="nb-field">
+                <label>Active Notices</label>
+                <div style="padding:8px 0;font-size:14px;"><?php echo $activeCount; ?> / <?php echo $isPro ? '∞' : $freeCap; ?></div>
+            </div>
+        </div>
+        <div style="margin-top:16px;padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#475569;">
+            <strong>Free tier features:</strong> Create &amp; manage notices with title, markdown content, visibility, colors, priority, timestamp, expand/dismiss.<br>
+            <strong>Pro features:</strong> Polls, ticket button, webhooks, tags, templates, clone, scheduling (publish/expire), page targeting, client/server/product targeting, admin assignment, acknowledgements, predefined votes, poll export, activity log, widget CRUD.
+        </div>
+    </div>
+</div>
+
+</div><!-- /nb-pane-license -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════
+     TAB PANE: ACTIVITY LOG
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="nb-pane-log" class="nb-main-tab-pane">
+<div class="nb-card">
+    <div class="nb-card-header">
+        <h2>📜 Activity Log</h2>
+        <?php if (!$isPro): ?>
+        <span class="nb-pro-lock">🔒 Pro</span>
+        <?php endif; ?>
+    </div>
+    <div class="nb-card-body">
+    <?php if (!$isPro): ?>
+        <div class="nb-alert" style="background:#fef9c3;color:#854d0e;border:1px solid #fde68a;">
+            🔒 The activity log is a Pro feature. <a href="https://hostingspell.com" target="_blank" rel="noopener">Upgrade to Pro</a> to view detailed action history.
+        </div>
+    <?php else:
+        try {
+            $logRows = \WHMCS\Database\Capsule::table('mod_noticebanner_log')
+                ->orderBy('id', 'desc')
+                ->limit(200)
+                ->get();
+        } catch (\Exception $e) { $logRows = []; }
+    ?>
+        <?php if (empty($logRows)): ?>
+            <p style="color:#94a3b8;font-size:14px;">No activity recorded yet.</p>
+        <?php else: ?>
+        <div style="overflow-x:auto;">
+        <table class="nb-log-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Notice</th>
+                    <th>Action</th>
+                    <th>Detail</th>
+                    <th>When</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($logRows as $lr): ?>
+                <tr>
+                    <td style="color:#94a3b8;"><?php echo (int)$lr->id; ?></td>
+                    <td><?php echo $lr->notice_id ? ('#' . (int)$lr->notice_id) : '—'; ?></td>
+                    <td><code style="background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:12px;"><?php echo htmlspecialchars($lr->action ?? ''); ?></code></td>
+                    <td style="max-width:320px;word-break:break-word;"><?php echo htmlspecialchars($lr->detail ?? ''); ?></td>
+                    <td style="white-space:nowrap;color:#64748b;"><?php echo htmlspecialchars($lr->created_at ?? ''); ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+        <?php endif; ?>
+    <?php endif; ?>
+    </div>
+</div>
+</div><!-- /nb-pane-log -->
+
 </div><!-- #nb-wrap -->
 
 <script>
-// ── Tab switching ─────────────────────────────────────────────────────────────
+// ── Main tab switching (Notices / License / Log) ──────────────────────────────
+function nbMainTab(pane, el) {
+    document.querySelectorAll('#nb-main-tabs .nb-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    ['notices','license','log'].forEach(function(p) {
+        var el2 = document.getElementById('nb-pane-' + p);
+        if (el2) el2.classList.toggle('active', p === pane);
+    });
+    // Persist selection in URL hash so page reload stays on same tab
+    try { history.replaceState(null,'','#nb-' + pane); } catch(e) {}
+}
+// Restore tab from hash on load
+(function() {
+    var h = window.location.hash;
+    var map = {'#nb-notices':'notices','#nb-license':'license','#nb-log':'log'};
+    if (map[h]) {
+        var tabs = document.querySelectorAll('#nb-main-tabs .nb-tab');
+        var panes = ['notices','license','log'];
+        panes.forEach(function(p, i) {
+            var pEl = document.getElementById('nb-pane-' + p);
+            if (pEl) pEl.classList.toggle('active', p === map[h]);
+            if (tabs[i]) tabs[i].classList.toggle('active', p === map[h]);
+        });
+    }
+})();
+
+// ── Markdown editor tab switching ─────────────────────────────────────────────
 function nbShowTab(tab, el) {
     document.querySelectorAll('.nb-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
