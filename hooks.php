@@ -6,13 +6,14 @@ if (!defined('WHMCS')) {
 require_once __DIR__ . '/noticebanner.php';
 require_once __DIR__ . '/widget.php';
 
-// ─── Acknowledge endpoint — intercepts POST on ANY page (client or admin) ────
-// Must run before any output so we can send JSON and exit cleanly.
+// ─── Poll vote + Acknowledge endpoints — intercept POST on ANY page ──────────
 add_hook('ClientAreaPage', 1, function ($vars) {
     NoticeBannerHelper::handleAcknowledgePost('client');
+    NoticeBannerHelper::handlePollVotePost();
 });
 add_hook('AdminAreaPage', 1, function ($vars) {
     NoticeBannerHelper::handleAcknowledgePost('admin');
+    NoticeBannerHelper::handlePollVotePost();
 });
 
 // ─── Hook registrations ───────────────────────────────────────────────────────
@@ -188,6 +189,66 @@ if (!class_exists('NoticeBannerHelper')) {
             } catch (\Exception $e) {
                 return [];
             }
+        }
+
+        // ── Handle poll vote POST on any page (called from hook, exits with JSON) ──
+        public static function handlePollVotePost(): void {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
+            if (empty($_POST['nb_poll_vote'])) return;
+
+            $nid  = (int)($_POST['poll_notice_id'] ?? 0);
+            $vote = $_POST['poll_vote'] ?? '';
+            $ok   = false;
+
+            if ($nid && $vote !== '') {
+                try {
+                    noticebanner_ensure_table();
+                    noticebanner_ensure_columns();
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
+                    if ($row) {
+                        $results        = json_decode($row->poll_results ?? '{}', true) ?: [];
+                        $results[$vote] = ($results[$vote] ?? 0) + 1;
+                        \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
+                            ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
+
+                        // Determine who voted and cache their display label
+                        $isAdmin    = !empty($_SESSION['adminid']);
+                        $entityType = $isAdmin ? 'admin' : 'client';
+                        $entityId   = $isAdmin ? (int)$_SESSION['adminid'] : (int)($_SESSION['uid'] ?? 0);
+                        $label      = '';
+                        if ($entityId) {
+                            try {
+                                if ($isAdmin) {
+                                    $u = \WHMCS\Database\Capsule::table('tbladmins')->where('id', $entityId)->first(['firstname', 'lastname', 'username']);
+                                    if ($u) $label = trim($u->firstname . ' ' . $u->lastname) . ' (@' . $u->username . ')';
+                                } else {
+                                    $u = \WHMCS\Database\Capsule::table('tblclients')->where('id', $entityId)->first(['firstname', 'lastname', 'email']);
+                                    if ($u) $label = trim($u->firstname . ' ' . $u->lastname) . ' (' . $u->email . ')';
+                                }
+                            } catch (\Exception $e) {}
+                        }
+                        \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->insert([
+                            'notice_id'    => $nid,
+                            'entity_type'  => $entityType,
+                            'entity_id'    => $entityId,
+                            'entity_label' => $label,
+                            'poll_option'  => $vote,
+                            'is_predefined'=> 0,
+                            'voted_at'     => date('Y-m-d H:i:s'),
+                        ]);
+
+                        noticebanner_log($nid, 'poll_vote', "$entityType #$entityId voted: $vote");
+                        $total = array_sum($results);
+                        header('Content-Type: application/json');
+                        echo json_encode(['ok' => true, 'results' => $results, 'total' => $total]);
+                        exit;
+                    }
+                } catch (\Exception $e) {}
+            }
+
+            header('Content-Type: application/json');
+            echo json_encode(['ok' => false]);
+            exit;
         }
 
         // ── Handle acknowledge POST on any page (called from hook, exits with JSON) ──
@@ -414,24 +475,36 @@ if (!class_exists('NoticeBannerHelper')) {
                 // ── Poll ──
                 $pollHtml = '';
                 if (!empty($n['poll_enabled']) && !empty($n['poll_question']) && !empty($n['poll_options'])) {
-                    $results  = $n['poll_results'] ?? [];
-                    $total    = array_sum($results);
-                    $pollHtml = '<div style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,0.04);border-radius:8px;max-width:480px;">'
-                        . '<div style="font-weight:600;margin-bottom:8px;">' . htmlspecialchars($n['poll_question']) . '</div>'
-                        . '<form method="post" action="">'
-                        . '<input type="hidden" name="poll_notice_id" value="' . (int)$n['id'] . '">';
+                    $results   = $n['poll_results'] ?? [];
+                    $total     = array_sum($results);
+                    $pollDivId = 'nb-poll-' . (int)$n['id'];
+                    $pollHtml  = '<div id="' . $pollDivId . '" style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,0.04);border-radius:8px;max-width:480px;">'
+                        . '<div style="font-weight:600;margin-bottom:8px;">' . htmlspecialchars($n['poll_question'], ENT_QUOTES, 'UTF-8') . '</div>';
                     foreach ($n['poll_options'] as $opt) {
-                        $votes    = $results[$opt] ?? 0;
-                        $pct      = $total > 0 ? round(($votes / $total) * 100) : 0;
-                        $pollHtml .= '<label style="display:block;margin-bottom:6px;font-size:14px;">'
-                            . '<input type="radio" name="poll_vote" value="' . htmlspecialchars($opt) . '" style="margin-right:6px;">'
-                            . htmlspecialchars($opt)
-                            . ' <span style="font-size:12px;opacity:0.6;">(' . $votes . ' vote' . ($votes == 1 ? '' : 's') . ', ' . $pct . '%)</span>'
+                        $votes   = $results[$opt] ?? 0;
+                        $pct     = $total > 0 ? round(($votes / $total) * 100) : 0;
+                        // Use base64 to safely pass option value through JS without encoding issues
+                        $optB64  = base64_encode($opt);
+                        $optAttr = htmlspecialchars($opt, ENT_QUOTES, 'UTF-8');
+                        $optDisp = htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8');
+                        $barW    = $total > 0 ? $pct : 0;
+                        $pollHtml .= '<label style="display:block;margin-bottom:8px;font-size:14px;cursor:pointer;">'
+                            . '<div style="display:flex;align-items:center;gap:8px;">'
+                            . '<input type="radio" name="nb_poll_opt_' . (int)$n['id'] . '" data-b64="' . $optB64 . '" value="' . $optAttr . '" style="margin:0;flex-shrink:0;">'
+                            . '<span>' . $optDisp . '</span>'
+                            . '<span class="nb-poll-stat" style="font-size:11px;opacity:0.6;margin-left:auto;white-space:nowrap;">' . $votes . ' vote' . ($votes == 1 ? '' : 's') . ' (' . $pct . '%)</span>'
+                            . '</div>'
+                            . '<div style="height:4px;background:#e2e8f0;border-radius:2px;margin-top:3px;margin-left:20px;">'
+                            . '<div class="nb-poll-bar" style="height:4px;background:#6366f1;border-radius:2px;width:' . $barW . '%;transition:width 0.4s;"></div>'
+                            . '</div>'
                             . '</label>';
                     }
-                    $pollHtml .= '<button type="submit" style="margin-top:6px;padding:5px 16px;border-radius:5px;background:#6366f1;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:13px;">Vote</button>'
-                        . '<span style="font-size:12px;opacity:0.55;margin-left:10px;">' . $total . ' total vote' . ($total == 1 ? '' : 's') . '</span>'
-                        . '</form></div>';
+                    $pollHtml .= '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">'
+                        . '<button type="button" onclick="nbPollVote(this,' . (int)$n['id'] . ')" '
+                        . 'style="padding:5px 18px;border-radius:5px;background:#6366f1;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:13px;">Vote</button>'
+                        . '<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">' . $total . ' total vote' . ($total == 1 ? '' : 's') . '</span>'
+                        . '</div>'
+                        . '</div>';
                 }
 
                 // ── Body ──
@@ -484,7 +557,7 @@ if (!class_exists('NoticeBannerHelper')) {
             }
 
             if ($html !== '') {
-                // Inject the acknowledge JS helper once per page
+                // Inject JS helpers (acknowledge + poll vote) once per page
                 $html .= '<script>
 if(typeof nbAcknowledge==="undefined"){
 function nbAcknowledge(btn,noticeId,entityType,entityId){
@@ -508,6 +581,56 @@ function nbAcknowledge(btn,noticeId,entityType,entityId){
         .catch(function(){
             btn.disabled=false;
             btn.textContent="Acknowledge";
+        });
+}
+}
+if(typeof nbPollVote==="undefined"){
+function nbPollVote(btn,noticeId){
+    var wrap=document.getElementById("nb-poll-"+noticeId);
+    if(!wrap)return;
+    var sel=wrap.querySelector("input[type=radio][name=\'nb_poll_opt_"+noticeId+"\']:checked");
+    if(!sel){alert("Please select an option first.");return;}
+    btn.disabled=true;
+    btn.textContent="Submitting\u2026";
+    var fd=new FormData();
+    fd.append("nb_poll_vote","1");
+    fd.append("poll_notice_id",noticeId);
+    // Decode base64 option value to preserve special characters exactly
+    var raw=sel.getAttribute("data-b64");
+    var vote=raw?atob(raw):sel.value;
+    fd.append("poll_vote",vote);
+    fetch(window.location.href,{method:"POST",body:fd,credentials:"same-origin",headers:{"X-Requested-With":"XMLHttpRequest"}})
+        .then(function(r){return r.json();})
+        .then(function(data){
+            if(data&&data.ok){
+                var results=data.results;
+                var total=data.total;
+                var labels=wrap.querySelectorAll("input[type=radio]");
+                labels.forEach(function(inp){
+                    var key=inp.getAttribute("data-b64")?atob(inp.getAttribute("data-b64")):inp.value;
+                    var cnt=results[key]||0;
+                    var pct=total>0?Math.round(cnt/total*100):0;
+                    var lbl=inp.closest("label");
+                    if(lbl){
+                        var stat=lbl.querySelector(".nb-poll-stat");
+                        var bar=lbl.querySelector(".nb-poll-bar");
+                        if(stat)stat.textContent=cnt+" vote"+(cnt===1?"":"s")+" ("+pct+"%)";
+                        if(bar)bar.style.width=pct+"%";
+                    }
+                    inp.disabled=true;
+                });
+                var tot=wrap.querySelector(".nb-poll-total");
+                if(tot)tot.textContent=total+" total vote"+(total===1?"":"s");
+                btn.textContent="\u2713 Voted!";
+                btn.style.background="#10b981";
+            } else {
+                btn.disabled=false;
+                btn.textContent="Vote";
+            }
+        })
+        .catch(function(){
+            btn.disabled=false;
+            btn.textContent="Vote";
         });
 }
 }

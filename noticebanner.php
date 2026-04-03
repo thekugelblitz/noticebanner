@@ -202,6 +202,21 @@ function noticebanner_ensure_columns() {
                 $table->timestamp('created_at')->useCurrent();
             });
         }
+
+        // mod_noticebanner_poll_votes — individual vote records
+        if (!$schema->hasTable('mod_noticebanner_poll_votes')) {
+            $schema->create('mod_noticebanner_poll_votes', function ($table) {
+                $table->increments('id');
+                $table->unsignedInteger('notice_id');
+                $table->string('entity_type', 10)->default('client'); // admin|client|predefined
+                $table->unsignedInteger('entity_id')->default(0);     // 0 for predefined
+                $table->string('entity_label', 200)->default('');     // cached name at vote time
+                $table->text('poll_option');
+                $table->tinyInteger('is_predefined')->default(0);
+                $table->timestamp('voted_at')->useCurrent();
+                $table->index(['notice_id'], 'idx_nb_poll_notice');
+            });
+        }
     } catch (\Exception $e) {}
 }
 }
@@ -424,6 +439,62 @@ function noticebanner_get_read_details(int $noticeId): array {
                 'entity_id'   => $eid,
                 'name'        => $name,
                 'read_at'     => $r->read_at,
+            ];
+        }
+        return $out;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_poll_voters')) {
+function noticebanner_get_poll_voters(int $noticeId): array {
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
+            ->where('notice_id', $noticeId)
+            ->orderBy('voted_at', 'desc')
+            ->get(['id', 'entity_type', 'entity_id', 'entity_label', 'poll_option', 'is_predefined', 'voted_at'])
+            ->toArray();
+
+        // Resolve any missing labels live (for rows inserted before caching was added)
+        $adminIds  = [];
+        $clientIds = [];
+        foreach ($rows as $r) {
+            if ($r->entity_label !== '') continue;
+            if ($r->entity_type === 'admin'  && $r->entity_id) $adminIds[]  = (int)$r->entity_id;
+            if ($r->entity_type === 'client' && $r->entity_id) $clientIds[] = (int)$r->entity_id;
+        }
+        $adminNames  = [];
+        $clientNames = [];
+        if (!empty($adminIds)) {
+            $aRows = \WHMCS\Database\Capsule::table('tbladmins')
+                ->whereIn('id', array_unique($adminIds))->get(['id', 'firstname', 'lastname', 'username'])->toArray();
+            foreach ($aRows as $a) $adminNames[(int)$a->id] = trim($a->firstname . ' ' . $a->lastname) . ' (@' . $a->username . ')';
+        }
+        if (!empty($clientIds)) {
+            $cRows = \WHMCS\Database\Capsule::table('tblclients')
+                ->whereIn('id', array_unique($clientIds))->get(['id', 'firstname', 'lastname', 'email'])->toArray();
+            foreach ($cRows as $c) $clientNames[(int)$c->id] = trim($c->firstname . ' ' . $c->lastname) . ' (' . $c->email . ')';
+        }
+
+        $out = [];
+        foreach ($rows as $r) {
+            $eid   = (int)$r->entity_id;
+            $label = $r->entity_label;
+            if ($label === '') {
+                if ($r->entity_type === 'admin')       $label = $adminNames[$eid]  ?? 'Admin #' . $eid;
+                elseif ($r->entity_type === 'client')  $label = $clientNames[$eid] ?? 'Client #' . $eid;
+                else                                   $label = 'Predefined';
+            }
+            $out[] = [
+                'id'            => (int)$r->id,
+                'entity_type'   => $r->entity_type,
+                'entity_id'     => $eid,
+                'label'         => $label,
+                'poll_option'   => $r->poll_option,
+                'is_predefined' => (bool)$r->is_predefined,
+                'voted_at'      => $r->voted_at,
             ];
         }
         return $out;
@@ -683,8 +754,8 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Poll vote ──
-        if (isset($_POST['poll_vote'], $_POST['poll_notice_id'])) {
+        // ── Poll vote (legacy non-AJAX fallback — real votes now go via hook) ──
+        if (isset($_POST['poll_vote'], $_POST['poll_notice_id']) && empty($_POST['nb_poll_vote'])) {
             $nid  = (int)$_POST['poll_notice_id'];
             $vote = $_POST['poll_vote'];
             try {
@@ -697,6 +768,83 @@ function noticebanner_output($vars) {
                     noticebanner_log($nid, 'poll_vote', "Voted: $vote");
                 }
             } catch (\Exception $e) {}
+            header('Location: ' . $_SERVER['REQUEST_URI']);
+            exit;
+        }
+
+        // ── Predefined votes (admin only — add N preset votes to a specific option) ──
+        if (isset($_POST['fake_poll_vote'], $_POST['fake_poll_notice_id'])) {
+            $nid   = (int)$_POST['fake_poll_notice_id'];
+            $vote  = $_POST['fake_poll_option'] ?? '';
+            $count = max(1, (int)($_POST['fake_poll_count'] ?? 1));
+            $label = trim($_POST['fake_poll_label'] ?? '') ?: 'Predefined Vote';
+            if ($nid && $vote !== '') {
+                try {
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
+                    if ($row) {
+                        $results        = json_decode($row->poll_results ?? '{}', true) ?: [];
+                        $results[$vote] = ($results[$vote] ?? 0) + $count;
+                        \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
+                            ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
+                        // Insert one vote record per count, labelled as predefined
+                        $now = date('Y-m-d H:i:s');
+                        for ($i = 0; $i < $count; $i++) {
+                            \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->insert([
+                                'notice_id'     => $nid,
+                                'entity_type'   => 'predefined',
+                                'entity_id'     => 0,
+                                'entity_label'  => $label,
+                                'poll_option'   => $vote,
+                                'is_predefined' => 1,
+                                'voted_at'      => $now,
+                            ]);
+                        }
+                        noticebanner_log($nid, 'predefined_poll_vote', "Option: $vote, Count: $count, Label: $label");
+                    }
+                } catch (\Exception $e) {}
+            }
+            header('Location: ' . $_SERVER['REQUEST_URI']);
+            exit;
+        }
+
+        // ── Delete single vote record (admin only) ──
+        if (isset($_POST['delete_poll_vote'], $_POST['delete_poll_vote_id'])) {
+            $vid = (int)$_POST['delete_poll_vote_id'];
+            $nid = (int)($_POST['delete_poll_notice_id'] ?? 0);
+            if ($vid) {
+                try {
+                    // Get the vote option before deleting so we can decrement the counter
+                    $vrow = \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->where('id', $vid)->first();
+                    if ($vrow) {
+                        \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->where('id', $vid)->delete();
+                        // Decrement the aggregate counter
+                        $nrow = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $vrow->notice_id)->first();
+                        if ($nrow) {
+                            $results = json_decode($nrow->poll_results ?? '{}', true) ?: [];
+                            $opt     = $vrow->poll_option;
+                            if (isset($results[$opt]) && $results[$opt] > 0) $results[$opt]--;
+                            \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $vrow->notice_id)
+                                ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
+                        }
+                        noticebanner_log($vrow->notice_id, 'poll_vote_deleted', "Vote #$vid removed");
+                    }
+                } catch (\Exception $e) {}
+            }
+            header('Location: ' . $_SERVER['REQUEST_URI']);
+            exit;
+        }
+
+        // ── Reset poll results (admin only) ──
+        if (isset($_POST['reset_poll'], $_POST['reset_poll_id'])) {
+            $nid = (int)$_POST['reset_poll_id'];
+            if ($nid) {
+                try {
+                    \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
+                        ->update(['poll_results' => json_encode([]), 'updated_at' => date('Y-m-d H:i:s')]);
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->where('notice_id', $nid)->delete();
+                    noticebanner_log($nid, 'poll_reset', 'Poll results and vote records cleared');
+                } catch (\Exception $e) {}
+            }
             header('Location: ' . $_SERVER['REQUEST_URI']);
             exit;
         }
