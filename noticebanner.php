@@ -487,6 +487,8 @@ function noticebanner_get_poll_voters(int $noticeId): array {
                 elseif ($r->entity_type === 'client')  $label = $clientNames[$eid] ?? 'Client #' . $eid;
                 else                                   $label = 'Predefined';
             }
+            // For predefined rows entity_id holds the running vote count
+            $voteCount = ($r->entity_type === 'predefined') ? max(1, $eid) : 1;
             $out[] = [
                 'id'            => (int)$r->id,
                 'entity_type'   => $r->entity_type,
@@ -494,6 +496,7 @@ function noticebanner_get_poll_voters(int $noticeId): array {
                 'label'         => $label,
                 'poll_option'   => $r->poll_option,
                 'is_predefined' => (bool)$r->is_predefined,
+                'vote_count'    => $voteCount,
                 'voted_at'      => $r->voted_at,
             ];
         }
@@ -772,34 +775,69 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Predefined votes (admin only — add N preset votes to a specific option) ──
+        // ── Predefined votes (admin only — multi-option, deduplicated by label+option) ──
         if (isset($_POST['fake_poll_vote'], $_POST['fake_poll_notice_id'])) {
-            $nid   = (int)$_POST['fake_poll_notice_id'];
-            $vote  = $_POST['fake_poll_option'] ?? '';
-            $count = max(1, (int)($_POST['fake_poll_count'] ?? 1));
-            $label = trim($_POST['fake_poll_label'] ?? '') ?: 'Predefined Vote';
-            if ($nid && $vote !== '') {
+            $nid      = (int)$_POST['fake_poll_notice_id'];
+            $label    = trim($_POST['fake_poll_label'] ?? '') ?: 'Predefined Vote';
+            // New multi-option form: fake_poll_options[] + fake_poll_counts[idx]
+            $options  = isset($_POST['fake_poll_options']) && is_array($_POST['fake_poll_options'])
+                        ? $_POST['fake_poll_options'] : [];
+            $counts   = isset($_POST['fake_poll_counts'])  && is_array($_POST['fake_poll_counts'])
+                        ? $_POST['fake_poll_counts']  : [];
+
+            // Legacy single-option fallback
+            if (empty($options) && !empty($_POST['fake_poll_option'])) {
+                $options = [$_POST['fake_poll_option']];
+                $counts  = [0 => max(1, (int)($_POST['fake_poll_count'] ?? 1))];
+            }
+
+            if ($nid && !empty($options)) {
                 try {
                     $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
                     if ($row) {
-                        $results        = json_decode($row->poll_results ?? '{}', true) ?: [];
-                        $results[$vote] = ($results[$vote] ?? 0) + $count;
-                        \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
-                            ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
-                        // Insert one vote record per count, labelled as predefined
-                        $now = date('Y-m-d H:i:s');
-                        for ($i = 0; $i < $count; $i++) {
-                            \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->insert([
-                                'notice_id'     => $nid,
-                                'entity_type'   => 'predefined',
-                                'entity_id'     => 0,
-                                'entity_label'  => $label,
-                                'poll_option'   => $vote,
-                                'is_predefined' => 1,
-                                'voted_at'      => $now,
-                            ]);
+                        $results = json_decode($row->poll_results ?? '{}', true) ?: [];
+                        $now     = date('Y-m-d H:i:s');
+
+                        foreach ($options as $idx => $opt) {
+                            $opt   = (string)$opt;
+                            $count = max(0, (int)($counts[$idx] ?? 1));
+                            if ($count === 0) continue;
+
+                            // Update aggregate counter
+                            $results[$opt] = ($results[$opt] ?? 0) + $count;
+
+                            // Deduplicate: find existing predefined row with same notice+label+option
+                            $existing = \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
+                                ->where('notice_id',    $nid)
+                                ->where('is_predefined', 1)
+                                ->where('entity_label', $label)
+                                ->where('poll_option',  $opt)
+                                ->first(['id', 'entity_id']);
+
+                            if ($existing) {
+                                // entity_id stores the running count for predefined rows
+                                \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
+                                    ->where('id', $existing->id)
+                                    ->update([
+                                        'entity_id' => $existing->entity_id + $count,
+                                        'voted_at'  => $now,
+                                    ]);
+                            } else {
+                                \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->insert([
+                                    'notice_id'     => $nid,
+                                    'entity_type'   => 'predefined',
+                                    'entity_id'     => $count,   // running count stored here
+                                    'entity_label'  => $label,
+                                    'poll_option'   => $opt,
+                                    'is_predefined' => 1,
+                                    'voted_at'      => $now,
+                                ]);
+                            }
+                            noticebanner_log($nid, 'predefined_poll_vote', "Option: $opt, +$count, Label: $label");
                         }
-                        noticebanner_log($nid, 'predefined_poll_vote', "Option: $vote, Count: $count, Label: $label");
+
+                        \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
+                            ->update(['poll_results' => json_encode($results), 'updated_at' => $now]);
                     }
                 } catch (\Exception $e) {}
             }
@@ -817,16 +855,19 @@ function noticebanner_output($vars) {
                     $vrow = \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->where('id', $vid)->first();
                     if ($vrow) {
                         \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->where('id', $vid)->delete();
-                        // Decrement the aggregate counter
+                        // For predefined rows entity_id holds the running count; for real votes it's 1
+                        $decrement = ($vrow->entity_type === 'predefined') ? max(1, (int)$vrow->entity_id) : 1;
                         $nrow = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $vrow->notice_id)->first();
                         if ($nrow) {
                             $results = json_decode($nrow->poll_results ?? '{}', true) ?: [];
                             $opt     = $vrow->poll_option;
-                            if (isset($results[$opt]) && $results[$opt] > 0) $results[$opt]--;
+                            if (isset($results[$opt])) {
+                                $results[$opt] = max(0, $results[$opt] - $decrement);
+                            }
                             \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $vrow->notice_id)
                                 ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
                         }
-                        noticebanner_log($vrow->notice_id, 'poll_vote_deleted', "Vote #$vid removed");
+                        noticebanner_log($vrow->notice_id, 'poll_vote_deleted', "Vote #$vid removed (-$decrement)");
                     }
                 } catch (\Exception $e) {}
             }

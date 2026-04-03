@@ -850,7 +850,7 @@ $now = date('Y-m-d H:i:s');
                             $pct   = $totalVotes > 0 ? round(($votes / $totalVotes) * 100) : 0;
                         ?>
                         <div class="nb-poll-bar-wrap">
-                            <span style="width:130px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo htmlspecialchars($opt); ?>"><?php echo htmlspecialchars($opt); ?></span>
+                            <span style="width:130px;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo htmlspecialchars($opt, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8'); ?></span>
                             <div class="nb-poll-bar-track"><div class="nb-poll-bar-fill" style="width:<?php echo $pct; ?>%;"></div></div>
                             <span style="width:60px;font-size:12px;color:#64748b;"><?php echo $votes; ?> (<?php echo $pct; ?>%)</span>
                         </div>
@@ -875,14 +875,17 @@ $now = date('Y-m-d H:i:s');
                             <?php if (!empty($pollVoters)): ?>
                             <div style="margin-bottom:10px;">
                                 <div style="font-size:11px;font-weight:600;color:#78350f;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Who Voted</div>
-                                <div style="max-height:180px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
+                                <div style="max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;">
                                     <?php foreach ($pollVoters as $v):
                                         $tc = $typeColors[$v['entity_type']] ?? $typeColors['predefined'];
                                     ?>
                                     <div style="display:flex;align-items:center;gap:6px;padding:4px 6px;background:#fff;border:1px solid #fde68a;border-radius:5px;font-size:11px;">
                                         <span style="padding:1px 6px;border-radius:10px;background:<?php echo $tc['bg']; ?>;color:<?php echo $tc['color']; ?>;font-weight:700;white-space:nowrap;flex-shrink:0;"><?php echo $tc['icon']; ?> <?php echo ucfirst($v['entity_type']); ?></span>
-                                        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo htmlspecialchars($v['label']); ?>"><?php echo htmlspecialchars($v['label']); ?></span>
-                                        <span style="color:#6366f1;font-weight:600;white-space:nowrap;flex-shrink:0;" title="Option voted for"><?php echo htmlspecialchars($v['poll_option']); ?></span>
+                                        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?php echo htmlspecialchars($v['label'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($v['label'], ENT_NOQUOTES, 'UTF-8'); ?></span>
+                                        <span style="color:#6366f1;font-weight:600;white-space:nowrap;flex-shrink:0;max-width:100px;overflow:hidden;text-overflow:ellipsis;" title="<?php echo htmlspecialchars($v['poll_option'], ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($v['poll_option'], ENT_NOQUOTES, 'UTF-8'); ?></span>
+                                        <?php if (!empty($v['vote_count']) && $v['vote_count'] > 1): ?>
+                                        <span style="background:#fef3c7;color:#92400e;border-radius:10px;padding:0 5px;font-weight:700;font-size:10px;flex-shrink:0;">×<?php echo (int)$v['vote_count']; ?></span>
+                                        <?php endif; ?>
                                         <span style="color:#94a3b8;white-space:nowrap;flex-shrink:0;"><?php echo date('d M H:i', strtotime($v['voted_at'])); ?></span>
                                         <form method="post" style="margin:0;flex-shrink:0;" onsubmit="return confirm('Remove this vote record?');">
                                             <input type="hidden" name="delete_poll_vote_id" value="<?php echo (int)$v['id']; ?>">
@@ -898,25 +901,40 @@ $now = date('Y-m-d H:i:s');
                             <div style="font-size:11px;color:#a16207;margin-bottom:10px;padding:6px;background:#fff;border-radius:5px;border:1px solid #fde68a;">No votes recorded yet.</div>
                             <?php endif; ?>
 
-                            <!-- Add predefined votes -->
+                            <!-- Add predefined votes — one row per option -->
                             <form method="post">
+                                <input type="hidden" name="fake_poll_notice_id" value="<?php echo (int)$n['id']; ?>">
                                 <div style="font-size:11px;font-weight:600;color:#78350f;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Add Predefined Votes</div>
-                                <div style="display:flex;flex-direction:column;gap:5px;">
-                                    <select name="fake_poll_option" style="font-size:12px;padding:4px 6px;border:1px solid #fcd34d;border-radius:5px;background:#fff;">
-                                        <?php foreach ($n['poll_options'] as $opt): ?>
-                                            <option value="<?php echo htmlspecialchars($opt, ENT_QUOTES); ?>"><?php echo htmlspecialchars($opt); ?></option>
-                                        <?php endforeach; ?>
-                                    </select>
-                                    <div style="display:flex;gap:5px;align-items:center;">
-                                        <input type="number" name="fake_poll_count" value="1" min="1" max="9999" placeholder="Count"
-                                            style="width:65px;font-size:12px;padding:4px 6px;border:1px solid #fcd34d;border-radius:5px;text-align:center;">
-                                        <input type="text" name="fake_poll_label" placeholder='Label (e.g. "Early Adopters")'
-                                            style="flex:1;font-size:12px;padding:4px 6px;border:1px solid #fcd34d;border-radius:5px;">
-                                    </div>
-                                    <input type="hidden" name="fake_poll_notice_id" value="<?php echo (int)$n['id']; ?>">
-                                    <button type="submit" name="fake_poll_vote" value="1"
-                                        style="padding:5px 12px;border-radius:5px;background:#f59e0b;color:#fff;font-weight:700;border:none;cursor:pointer;font-size:12px;align-self:flex-start;">+ Add Predefined Votes</button>
+                                <div style="margin-bottom:6px;">
+                                    <input type="text" name="fake_poll_label" placeholder='Label, e.g. "Early Adopters"'
+                                        style="width:100%;box-sizing:border-box;font-size:12px;padding:5px 8px;border:1px solid #fcd34d;border-radius:5px;">
                                 </div>
+                                <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;">
+                                    <thead>
+                                        <tr>
+                                            <th style="text-align:left;padding:3px 4px;color:#78350f;font-weight:600;font-size:10px;text-transform:uppercase;">Option</th>
+                                            <th style="text-align:center;padding:3px 4px;color:#78350f;font-weight:600;font-size:10px;text-transform:uppercase;width:60px;">Votes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <?php foreach ($n['poll_options'] as $optIdx => $opt): ?>
+                                        <tr style="border-top:1px solid #fde68a;">
+                                            <td style="padding:4px;">
+                                                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
+                                                    <input type="checkbox" name="fake_poll_options[]" value="<?php echo htmlspecialchars($opt, ENT_QUOTES, 'UTF-8'); ?>" style="flex-shrink:0;">
+                                                    <span><?php echo htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8'); ?></span>
+                                                </label>
+                                            </td>
+                                            <td style="padding:4px;text-align:center;">
+                                                <input type="number" name="fake_poll_counts[<?php echo $optIdx; ?>]" value="1" min="0" max="9999"
+                                                    style="width:55px;font-size:12px;padding:3px 4px;border:1px solid #fcd34d;border-radius:4px;text-align:center;">
+                                            </td>
+                                        </tr>
+                                        <?php endforeach; ?>
+                                    </tbody>
+                                </table>
+                                <button type="submit" name="fake_poll_vote" value="1"
+                                    style="padding:5px 14px;border-radius:5px;background:#f59e0b;color:#fff;font-weight:700;border:none;cursor:pointer;font-size:12px;">+ Apply Predefined Votes</button>
                             </form>
                         </div>
                     </div>
