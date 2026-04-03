@@ -449,26 +449,27 @@ function noticebanner_get_admins() {
 
 if (!function_exists('noticebanner_get_departments')) {
 function noticebanner_get_departments() {
-    // WHMCS uses tblsupportdepts; the sort column varies by version
-    foreach (['tblsupportdepts', 'tblsupportdepartments'] as $tbl) {
+    // WHMCS table name varies by version:
+    //   tblticketdepartments  — modern WHMCS (v7+)
+    //   tblsupportdepts       — older versions
+    //   tblsupportdepartments — some forks/older installs
+    foreach (['tblticketdepartments', 'tblsupportdepts', 'tblsupportdepartments'] as $tbl) {
         try {
-            // Check table exists first with a simple unordered query
+            // Plain fetch first — confirms table exists and has rows
             $rows = \WHMCS\Database\Capsule::table($tbl)
                 ->get(['id', 'name'])
                 ->toArray();
             if (empty($rows)) continue;
-            // Try to sort — column name differs across WHMCS versions
+            // Try each known sort-column name; fall back to PHP sort if none exist
             foreach (['sortorder', 'order', 'sort_order'] as $col) {
                 try {
-                    $sorted = \WHMCS\Database\Capsule::table($tbl)
+                    return \WHMCS\Database\Capsule::table($tbl)
                         ->orderBy($col)
                         ->orderBy('name')
                         ->get(['id', 'name'])
                         ->toArray();
-                    return $sorted;
                 } catch (\Exception $e) {}
             }
-            // Fallback: return unsorted rows
             usort($rows, fn($a, $b) => strcmp($a->name, $b->name));
             return $rows;
         } catch (\Exception $e) {}
@@ -634,7 +635,7 @@ function noticebanner_output($vars) {
     // ── Debug: ?nb_debug_depts=1 — dumps raw department query info ──
     if (!empty($_GET['nb_debug_depts'])) {
         header('Content-Type: text/plain');
-        foreach (['tblsupportdepts', 'tblsupportdepartments'] as $tbl) {
+        foreach (['tblticketdepartments', 'tblsupportdepts', 'tblsupportdepartments'] as $tbl) {
             echo "=== $tbl ===\n";
             try {
                 $rows = \WHMCS\Database\Capsule::table($tbl)->get()->toArray();
