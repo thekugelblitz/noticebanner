@@ -125,6 +125,44 @@ if (!class_exists('NoticeBannerHelper')) {
             }
         }
 
+        // ── Get server IDs the current client has active services on ─────────
+        private static function currentClientServerIds(): array {
+            $uid = self::currentClientId();
+            if (!$uid) return [];
+            try {
+                return \WHMCS\Database\Capsule::table('tblhosting')
+                    ->where('userid', $uid)
+                    ->whereIn('domainstatus', ['Active', 'Suspended'])
+                    ->whereNotNull('server')
+                    ->where('server', '>', 0)
+                    ->pluck('server')
+                    ->map(fn($v) => (int)$v)
+                    ->unique()
+                    ->values()
+                    ->toArray();
+            } catch (\Exception $e) {
+                return [];
+            }
+        }
+
+        // ── Get product IDs the current client has active services for ───────
+        private static function currentClientProductIds(): array {
+            $uid = self::currentClientId();
+            if (!$uid) return [];
+            try {
+                return \WHMCS\Database\Capsule::table('tblhosting')
+                    ->where('userid', $uid)
+                    ->whereIn('domainstatus', ['Active', 'Suspended'])
+                    ->pluck('packageid')
+                    ->map(fn($v) => (int)$v)
+                    ->unique()
+                    ->values()
+                    ->toArray();
+            } catch (\Exception $e) {
+                return [];
+            }
+        }
+
         // ── Resolve admin names from IDs ─────────────────────────────────────
         private static function adminNames(array $ids): array {
             if (empty($ids)) return [];
@@ -166,10 +204,12 @@ if (!class_exists('NoticeBannerHelper')) {
             $notices = function_exists('noticebanner_get_notices') ? noticebanner_get_notices(true) : [];
             if (empty($notices)) return '';
 
-            $currentAdminId  = ($area === 'admin')  ? self::currentAdminId()       : 0;
-            $currentClientId = ($area === 'client') ? self::currentClientId()      : 0;
-            $currentGroupId  = ($area === 'client') ? self::currentClientGroupId() : 0;
-            $requestUri      = $_SERVER['REQUEST_URI'] ?? '';
+            $currentAdminId      = ($area === 'admin')  ? self::currentAdminId()          : 0;
+            $currentClientId     = ($area === 'client') ? self::currentClientId()         : 0;
+            $currentGroupId      = ($area === 'client') ? self::currentClientGroupId()    : 0;
+            $clientServerIds     = ($area === 'client') ? self::currentClientServerIds()  : [];
+            $clientProductIds    = ($area === 'client') ? self::currentClientProductIds() : [];
+            $requestUri          = $_SERVER['REQUEST_URI'] ?? '';
 
             $html = '';
             foreach ($notices as $n) {
@@ -205,6 +245,30 @@ if (!class_exists('NoticeBannerHelper')) {
                         }
                     }
                     if (!$matched) continue;
+                }
+
+                // ── Specific client gate ──
+                $targetClients = $n['target_clients'] ?? [];
+                if ($area === 'client' && !empty($targetClients)) {
+                    if ($currentClientId === 0 || !in_array($currentClientId, $targetClients, true)) {
+                        continue;
+                    }
+                }
+
+                // ── Specific server gate (client must have an active service on one of these servers) ──
+                $targetServers = $n['target_servers'] ?? [];
+                if ($area === 'client' && !empty($targetServers)) {
+                    if (empty(array_intersect($targetServers, $clientServerIds))) {
+                        continue;
+                    }
+                }
+
+                // ── Specific product gate (client must have an active service for one of these products) ──
+                $targetProducts = $n['target_products'] ?? [];
+                if ($area === 'client' && !empty($targetProducts)) {
+                    if (empty(array_intersect($targetProducts, $clientProductIds))) {
+                        continue;
+                    }
                 }
 
                 $id       = 'nb_' . $n['id'];
@@ -258,21 +322,21 @@ if (!class_exists('NoticeBannerHelper')) {
                         . '</div>';
                 }
 
-                // ── Acknowledge button ──
-                $ackHtml = '';
+                // ── Acknowledge button (rendered in header controls, not body) ──
+                $ackBtn = '';
                 $entityId   = ($area === 'admin') ? $currentAdminId : $currentClientId;
                 $entityType = $area === 'admin' ? 'admin' : 'client';
                 if ($entityId && function_exists('noticebanner_ensure_columns')) {
                     $acked = self::hasAcknowledged((int)$n['id'], $entityType, $entityId);
                     if ($acked) {
-                        $ackHtml = '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 12px;border-radius:6px;background:#dcfce7;color:#166534;font-size:13px;font-weight:600;margin-top:8px;">✓ Acknowledged</span>';
+                        $ackBtn = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 11px;border-radius:5px;background:#dcfce7;color:#166534;font-size:12px;font-weight:700;border:1px solid #bbf7d0;flex-shrink:0;">✓ Acknowledged</span>';
                     } else {
-                        $ackHtml = '<form method="post" action="" style="display:inline;margin-top:8px;">'
+                        $ackBtn = '<form method="post" action="" style="display:inline-flex;">'
                             . '<input type="hidden" name="mark_read" value="1">'
                             . '<input type="hidden" name="mark_read_id" value="' . (int)$n['id'] . '">'
                             . '<input type="hidden" name="mark_read_type" value="' . $entityType . '">'
                             . '<input type="hidden" name="mark_read_entity" value="' . $entityId . '">'
-                            . '<button type="submit" style="padding:4px 14px;border-radius:6px;background:#e0e7ff;color:#3730a3;border:none;cursor:pointer;font-size:13px;font-weight:600;">Acknowledge</button>'
+                            . '<button type="submit" style="padding:3px 11px;border-radius:5px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0;">Acknowledge</button>'
                             . '</form>';
                     }
                 }
@@ -289,14 +353,18 @@ if (!class_exists('NoticeBannerHelper')) {
                         . htmlspecialchars($n['button_text']) . '</a>';
                 }
 
-                // ── Ticket button (client only) ──
+                // ── Ticket button ──
                 $ticketHtml = '';
-                if (!empty($n['ticket_enabled']) && $area === 'client') {
+                if (!empty($n['ticket_enabled']) && !empty($n['ticket_department_id'])) {
                     $deptId  = urlencode($n['ticket_department_id'] ?? '');
                     $subject = urlencode($n['notice_title'] ?? '');
-                    $body    = urlencode(strip_tags($n['notice_content'] ?? ''));
+                    $msgBody = urlencode(strip_tags($n['notice_content'] ?? ''));
                     $btnTxt  = htmlspecialchars($n['ticket_button_text'] ?: 'Create Ticket');
-                    $ticketHtml = '<a href="/submitticket.php?step=2&deptid=' . $deptId . '&subject=' . $subject . '&message=' . $body . '"'
+                    // Works for both client area (/submitticket.php) and admin area (/supporttickets.php)
+                    $ticketUrl = $area === 'admin'
+                        ? 'supporttickets.php?action=open&deptid=' . $deptId . '&subject=' . $subject
+                        : 'submitticket.php?step=2&deptid=' . $deptId . '&subject=' . $subject . '&message=' . $msgBody;
+                    $ticketHtml = '<a href="' . $ticketUrl . '"'
                         . ' style="display:inline-block;margin-top:10px;margin-left:8px;padding:7px 22px;border-radius:6px;'
                         . 'background:#10b981;color:#fff;font-weight:600;text-decoration:none;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.12);">'
                         . $btnTxt . '</a>';
@@ -329,7 +397,6 @@ if (!class_exists('NoticeBannerHelper')) {
                 $bodyHtml = '<div style="margin-top:10px;font-size:14px;line-height:1.7;max-width:800px;margin-left:auto;margin-right:auto;text-align:left;">'
                     . $content . $btnHtml . $ticketHtml . $pollHtml
                     . $tagsHtml . $assignedHtml
-                    . '<div>' . $ackHtml . '</div>'
                     . '</div>';
 
                 // ── Banner wrapper ──
@@ -343,27 +410,33 @@ if (!class_exists('NoticeBannerHelper')) {
                 $dismissBtn = '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" '
                     . 'style="padding:3px 10px;font-size:16px;line-height:1;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;flex-shrink:0;" title="Dismiss">&times;</button>';
 
+                // Controls: Acknowledge + optional Expand + Dismiss — always top-right
+                $controls = '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;">'
+                    . $ackBtn;
+
                 $bannerStyle = 'background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;'
                     . 'color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);';
 
                 if (!empty($n['expandable'])) {
                     $expandBtn = '<button type="button" onclick="(function(b,c){var open=c.style.display!==\'none\';c.style.display=open?\'none\':\'block\';b.textContent=open?\'Expand\':\'Collapse\';})(this,document.getElementById(\'' . $id . '_body\'))" '
                         . 'style="padding:3px 14px;font-size:13px;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;font-weight:500;">Expand</button>';
+                    $controls .= $expandBtn . $dismissBtn . '</div>';
                     $html .= '<div id="' . $id . '" style="' . $bannerStyle . '">'
                         . '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
                         . $headerRow
-                        . '<div style="display:flex;gap:8px;align-items:center;">' . $expandBtn . $dismissBtn . '</div>'
+                        . $controls
                         . '</div>'
                         . '<div id="' . $id . '_body" style="display:none;">' . $bodyHtml . '</div>'
                         . '</div>';
                 } else {
+                    $controls .= $dismissBtn . '</div>';
                     $html .= '<div id="' . $id . '" style="' . $bannerStyle . '">'
                         . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
                         . '<div style="flex:1;min-width:0;">'
                         . $headerRow
                         . $bodyHtml
                         . '</div>'
-                        . $dismissBtn
+                        . $controls
                         . '</div>'
                         . '</div>';
                 }

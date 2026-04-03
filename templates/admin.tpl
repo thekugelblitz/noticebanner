@@ -518,6 +518,121 @@ $now = date('Y-m-d H:i:s');
             </div>
             <?php endif; ?>
 
+            <!-- ── Granular Targeting (Clients / Servers / Products) ── -->
+            <div style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                <div class="nb-section-toggle" id="nb-target-toggle" onclick="nbToggleSection('nb-target-body','nb-target-toggle')"
+                    style="padding:10px 14px;background:#f0fdf4;font-size:13px;font-weight:700;color:#166534;text-transform:uppercase;letter-spacing:0.05em;border-bottom:1px solid #e2e8f0;">
+                    🎯 Granular Targeting — Specific Clients / Servers / Products
+                    <?php
+                    $hasTargeting = !empty($edit_notice['target_clients']) || !empty($edit_notice['target_servers']) || !empty($edit_notice['target_products']);
+                    if ($hasTargeting): ?>
+                        <span style="margin-left:8px;background:#166534;color:#fff;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:700;">Active</span>
+                    <?php endif; ?>
+                </div>
+                <div id="nb-target-body" class="nb-collapsible <?php echo $hasTargeting ? 'open' : ''; ?>" style="padding:16px;">
+                    <p style="margin:0 0 14px;font-size:13px;color:#64748b;line-height:1.6;">
+                        These filters are <strong>additive</strong> — a client must match <em>all</em> non-empty conditions below to see the notice.
+                        Leave all blank to show to all clients (subject to group/page filters above).
+                    </p>
+
+                    <!-- Specific Clients -->
+                    <div class="nb-field" style="margin-bottom:16px;">
+                        <label>
+                            👤 Specific Clients
+                            <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:4px;">Search and add individual clients. Leave empty to target all.</span>
+                        </label>
+                        <!-- Selected clients chips -->
+                        <div id="nb-client-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:10px;">
+                            <?php foreach ($edit_notice['target_clients'] ?? [] as $cid):
+                                $cid = (int)$cid;
+                            ?>
+                                <span class="nb-chip" id="nb-client-chip-<?php echo $cid; ?>" data-id="<?php echo $cid; ?>">
+                                    <span class="nb-client-chip-name">
+                                        <?php
+                                        // Resolve name inline for edit mode
+                                        $cRow = null;
+                                        foreach (noticebanner_get_clients_by_ids([$cid]) as $cr) { $cRow = $cr; }
+                                        echo $cRow ? htmlspecialchars($cRow->firstname . ' ' . $cRow->lastname . ' (' . $cRow->email . ')') : 'Client #' . $cid;
+                                        ?>
+                                    </span>
+                                    <button type="button" onclick="nbRemoveClient(<?php echo $cid; ?>)" style="background:none;border:none;cursor:pointer;color:#7c3aed;font-size:13px;line-height:1;padding:0 0 0 4px;">&times;</button>
+                                    <input type="hidden" name="target_clients[]" value="<?php echo $cid; ?>">
+                                </span>
+                            <?php endforeach; ?>
+                        </div>
+                        <!-- Search box -->
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                            <input type="text" id="nb-client-search" placeholder="Search by name or email…"
+                                style="flex:1;min-width:200px;padding:8px 11px;border:1px solid #cbd5e1;border-radius:7px;font-size:14px;"
+                                oninput="nbClientSearch(this.value)" autocomplete="off">
+                            <div id="nb-client-results" style="display:none;position:absolute;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);min-width:320px;max-height:220px;overflow-y:auto;"></div>
+                        </div>
+                        <small style="color:#94a3b8;margin-top:4px;">Type at least 2 characters to search.</small>
+                    </div>
+
+                    <div class="nb-grid">
+                        <!-- Specific Servers -->
+                        <?php if (!empty($servers)): ?>
+                        <div class="nb-field">
+                            <label>
+                                🖥 Specific Servers
+                                <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:4px;">Show only to clients with an active service on these servers.</span>
+                            </label>
+                            <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+                                <select name="target_servers[]" multiple id="nb-servers-select"
+                                    style="flex:1;min-width:200px;height:110px;border:1px solid #cbd5e1;border-radius:7px;padding:4px;font-size:13px;">
+                                    <?php foreach ($servers as $srv): ?>
+                                        <option value="<?php echo (int)$srv->id; ?>"
+                                            <?php echo in_array($srv->id, $edit_notice['target_servers'] ?? []) ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($srv->name . ($srv->hostname ? ' (' . $srv->hostname . ')' : '')); ?>
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <div style="display:flex;flex-direction:column;gap:5px;padding-top:2px;">
+                                    <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-servers-select option').forEach(o=>o.selected=true)">All</button>
+                                    <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-servers-select option').forEach(o=>o.selected=false)">None</button>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+
+                        <!-- Specific Products -->
+                        <?php if (!empty($products)): ?>
+                        <div class="nb-field">
+                            <label>
+                                📦 Specific Products / Services
+                                <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:4px;">Show only to clients with an active service for these products.</span>
+                            </label>
+                            <div style="display:flex;gap:8px;align-items:flex-start;flex-wrap:wrap;">
+                                <select name="target_products[]" multiple id="nb-products-select"
+                                    style="flex:1;min-width:200px;height:110px;border:1px solid #cbd5e1;border-radius:7px;padding:4px;font-size:13px;">
+                                    <?php
+                                    $lastGroup = null;
+                                    foreach ($products as $prod):
+                                        if ($prod->group_name !== $lastGroup):
+                                            if ($lastGroup !== null) echo '</optgroup>';
+                                            echo '<optgroup label="' . htmlspecialchars($prod->group_name ?: 'Ungrouped') . '">';
+                                            $lastGroup = $prod->group_name;
+                                        endif;
+                                    ?>
+                                        <option value="<?php echo (int)$prod->id; ?>"
+                                            <?php echo in_array($prod->id, $edit_notice['target_products'] ?? []) ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($prod->name); ?>
+                                        </option>
+                                    <?php endforeach;
+                                    if ($lastGroup !== null) echo '</optgroup>'; ?>
+                                </select>
+                                <div style="display:flex;flex-direction:column;gap:5px;padding-top:2px;">
+                                    <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-products-select option').forEach(o=>o.selected=true)">All</button>
+                                    <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-products-select option').forEach(o=>o.selected=false)">None</button>
+                                </div>
+                            </div>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
             <!-- Advanced section (page slugs + webhook) -->
             <div style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
                 <div class="nb-section-toggle" id="nb-adv-toggle" onclick="nbToggleSection('nb-adv-body','nb-adv-toggle')"
@@ -690,6 +805,30 @@ $now = date('Y-m-d H:i:s');
                                 <?php echo htmlspecialchars($groupMap[$gid] ?? 'Group #' . $gid); ?>
                             </span>
                         <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
+                <!-- Granular targeting summary -->
+                <?php
+                $hasGranular = !empty($n['target_clients']) || !empty($n['target_servers']) || !empty($n['target_products']);
+                if ($hasGranular): ?>
+                    <div style="margin-bottom:6px;display:flex;align-items:flex-start;flex-wrap:wrap;gap:4px;">
+                        <span style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-right:2px;margin-top:2px;">🎯 Target:</span>
+                        <?php if (!empty($n['target_clients'])): ?>
+                            <span style="display:inline-flex;align-items:center;background:#fef9c3;color:#854d0e;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;margin:1px;">
+                                👤 <?php echo count($n['target_clients']); ?> client<?php echo count($n['target_clients']) == 1 ? '' : 's'; ?>
+                            </span>
+                        <?php endif; ?>
+                        <?php if (!empty($n['target_servers'])): ?>
+                            <span style="display:inline-flex;align-items:center;background:#f0fdf4;color:#166534;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;margin:1px;">
+                                🖥 <?php echo count($n['target_servers']); ?> server<?php echo count($n['target_servers']) == 1 ? '' : 's'; ?>
+                            </span>
+                        <?php endif; ?>
+                        <?php if (!empty($n['target_products'])): ?>
+                            <span style="display:inline-flex;align-items:center;background:#ede9fe;color:#5b21b6;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;margin:1px;">
+                                📦 <?php echo count($n['target_products']); ?> product<?php echo count($n['target_products']) == 1 ? '' : 's'; ?>
+                            </span>
+                        <?php endif; ?>
                     </div>
                 <?php endif; ?>
 
@@ -1060,5 +1199,76 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('DOMContentLoaded', function() {
     nbUpdatePreview();
     nbSyncTagsHidden();
+    // Position client search dropdown relative to input
+    var inp = document.getElementById('nb-client-search');
+    if (inp) {
+        inp.addEventListener('focus', function() {
+            var res = document.getElementById('nb-client-results');
+            var rect = inp.getBoundingClientRect();
+            res.style.top  = (inp.offsetTop + inp.offsetHeight + 2) + 'px';
+            res.style.left = inp.offsetLeft + 'px';
+            res.style.width = inp.offsetWidth + 'px';
+        });
+        document.addEventListener('click', function(e) {
+            if (!inp.contains(e.target)) {
+                document.getElementById('nb-client-results').style.display = 'none';
+            }
+        });
+    }
 });
+
+// ── Client search ─────────────────────────────────────────────────────────────
+var nbClientTimer = null;
+function nbClientSearch(val) {
+    clearTimeout(nbClientTimer);
+    var res = document.getElementById('nb-client-results');
+    if (val.length < 2) { res.style.display = 'none'; return; }
+    nbClientTimer = setTimeout(function() {
+        var form = new FormData();
+        form.append('nb_client_search', val);
+        fetch(window.location.href, { method: 'POST', body: form })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.length) { res.style.display = 'none'; return; }
+                res.innerHTML = '';
+                data.forEach(function(c) {
+                    var item = document.createElement('div');
+                    item.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9;';
+                    item.textContent = c.text;
+                    item.onmouseenter = function() { item.style.background = '#f0f9ff'; };
+                    item.onmouseleave = function() { item.style.background = ''; };
+                    item.onclick = function() {
+                        nbAddClient(c.id, c.text);
+                        document.getElementById('nb-client-search').value = '';
+                        res.style.display = 'none';
+                    };
+                    res.appendChild(item);
+                });
+                // Position dropdown below the input
+                var inp = document.getElementById('nb-client-search');
+                res.style.position = 'absolute';
+                res.style.top  = (inp.getBoundingClientRect().bottom + window.scrollY + 2) + 'px';
+                res.style.left = (inp.getBoundingClientRect().left + window.scrollX) + 'px';
+                res.style.width = inp.offsetWidth + 'px';
+                res.style.display = 'block';
+            })
+            .catch(function() { res.style.display = 'none'; });
+    }, 300);
+}
+function nbAddClient(id, text) {
+    if (document.getElementById('nb-client-chip-' + id)) return; // already added
+    var chips = document.getElementById('nb-client-chips');
+    var chip  = document.createElement('span');
+    chip.className = 'nb-chip';
+    chip.id = 'nb-client-chip-' + id;
+    chip.dataset.id = id;
+    chip.innerHTML = '<span>' + text.replace(/</g,'&lt;') + '</span>'
+        + '<button type="button" onclick="nbRemoveClient(' + id + ')" style="background:none;border:none;cursor:pointer;color:#7c3aed;font-size:13px;line-height:1;padding:0 0 0 4px;">&times;</button>'
+        + '<input type="hidden" name="target_clients[]" value="' + id + '">';
+    chips.appendChild(chip);
+}
+function nbRemoveClient(id) {
+    var chip = document.getElementById('nb-client-chip-' + id);
+    if (chip) chip.remove();
+}
 </script>

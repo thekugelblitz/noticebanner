@@ -170,6 +170,13 @@ function noticebanner_ensure_columns() {
                 $table->text('page_slugs')->nullable()->after('webhook_url');
             if (!$schema->hasColumn('mod_noticebanner', 'is_pinned'))
                 $table->tinyInteger('is_pinned')->default(0)->after('page_slugs');
+            // v3.1 — granular targeting
+            if (!$schema->hasColumn('mod_noticebanner', 'target_clients'))
+                $table->text('target_clients')->nullable()->after('is_pinned');
+            if (!$schema->hasColumn('mod_noticebanner', 'target_servers'))
+                $table->text('target_servers')->nullable()->after('target_clients');
+            if (!$schema->hasColumn('mod_noticebanner', 'target_products'))
+                $table->text('target_products')->nullable()->after('target_servers');
         });
 
         // mod_noticebanner_reads
@@ -294,6 +301,9 @@ function noticebanner_get_notices(bool $forRendering = false) {
             $n['assigned_admins']  = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
             $n['mentioned_admins'] = json_decode($n['mentioned_admins'] ?? '[]', true) ?: [];
             $n['client_groups']    = json_decode($n['client_groups'] ?? '[]', true) ?: [];
+            $n['target_clients']   = json_decode($n['target_clients'] ?? '[]', true) ?: [];
+            $n['target_servers']   = json_decode($n['target_servers'] ?? '[]', true) ?: [];
+            $n['target_products']  = json_decode($n['target_products'] ?? '[]', true) ?: [];
             $n['page_slugs']       = json_decode($n['page_slugs'] ?? '[]', true) ?: [];
             $notices[] = $n;
         }
@@ -316,10 +326,13 @@ function noticebanner_get_templates() {
         $out = [];
         foreach ($rows as $row) {
             $n = (array)$row;
-            $n['poll_options']    = json_decode($n['poll_options'] ?? '[]', true) ?: [];
-            $n['assigned_admins'] = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
-            $n['client_groups']   = json_decode($n['client_groups'] ?? '[]', true) ?: [];
-            $n['page_slugs']      = json_decode($n['page_slugs'] ?? '[]', true) ?: [];
+            $n['poll_options']     = json_decode($n['poll_options'] ?? '[]', true) ?: [];
+            $n['assigned_admins']  = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
+            $n['client_groups']    = json_decode($n['client_groups'] ?? '[]', true) ?: [];
+            $n['target_clients']   = json_decode($n['target_clients'] ?? '[]', true) ?: [];
+            $n['target_servers']   = json_decode($n['target_servers'] ?? '[]', true) ?: [];
+            $n['target_products']  = json_decode($n['target_products'] ?? '[]', true) ?: [];
+            $n['page_slugs']       = json_decode($n['page_slugs'] ?? '[]', true) ?: [];
             $out[] = $n;
         }
         return $out;
@@ -386,15 +399,18 @@ function noticebanner_get_admins() {
 
 if (!function_exists('noticebanner_get_departments')) {
 function noticebanner_get_departments() {
-    try {
-        return \WHMCS\Database\Capsule::table('tblsupportdepartments')
-            ->orderBy('order')
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->toArray();
-    } catch (\Exception $e) {
-        return [];
+    // Try both known WHMCS table names for support departments
+    foreach (['tblsupportdepts', 'tblsupportdepartments'] as $tbl) {
+        try {
+            $rows = \WHMCS\Database\Capsule::table($tbl)
+                ->orderBy('order')
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->toArray();
+            if (!empty($rows)) return $rows;
+        } catch (\Exception $e) {}
     }
+    return [];
 }
 }
 
@@ -411,6 +427,72 @@ function noticebanner_get_client_groups() {
 }
 }
 
+if (!function_exists('noticebanner_get_servers')) {
+function noticebanner_get_servers() {
+    try {
+        return \WHMCS\Database\Capsule::table('tblservers')
+            ->orderBy('name')
+            ->get(['id', 'name', 'hostname', 'type'])
+            ->toArray();
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_products')) {
+function noticebanner_get_products() {
+    try {
+        $rows = \WHMCS\Database\Capsule::table('tblproducts as p')
+            ->leftJoin('tblproductgroups as g', 'p.gid', '=', 'g.id')
+            ->orderBy('g.name')
+            ->orderBy('p.name')
+            ->get(['p.id', 'p.name', 'p.type', 'g.name as group_name'])
+            ->toArray();
+        return $rows;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_search_clients')) {
+function noticebanner_search_clients(string $q, int $limit = 20): array {
+    if (strlen(trim($q)) < 2) return [];
+    try {
+        $term = '%' . trim($q) . '%';
+        return \WHMCS\Database\Capsule::table('tblclients')
+            ->where(function ($query) use ($term) {
+                $query->where('firstname', 'like', $term)
+                      ->orWhere('lastname', 'like', $term)
+                      ->orWhere('email', 'like', $term)
+                      ->orWhereRaw("CONCAT(firstname,' ',lastname) LIKE ?", [$term]);
+            })
+            ->orderBy('firstname')
+            ->limit($limit)
+            ->get(['id', 'firstname', 'lastname', 'email', 'companyname'])
+            ->toArray();
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_clients_by_ids')) {
+function noticebanner_get_clients_by_ids(array $ids): array {
+    if (empty($ids)) return [];
+    try {
+        return \WHMCS\Database\Capsule::table('tblclients')
+            ->whereIn('id', $ids)
+            ->orderBy('firstname')
+            ->get(['id', 'firstname', 'lastname', 'email'])
+            ->toArray();
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
 // ─── Build save payload from POST ────────────────────────────────────────────
 
 if (!function_exists('noticebanner_build_payload')) {
@@ -419,8 +501,14 @@ function noticebanner_build_payload(): array {
         ? array_values(array_unique(array_map('intval', $_POST['assigned_admins']))) : [];
     $pollOptions = isset($_POST['poll_options']) && is_array($_POST['poll_options'])
         ? array_values(array_filter(array_map('trim', $_POST['poll_options']), fn($v) => $v !== '')) : [];
-    $clientGroups = isset($_POST['client_groups']) && is_array($_POST['client_groups'])
+    $clientGroups   = isset($_POST['client_groups']) && is_array($_POST['client_groups'])
         ? array_values(array_unique(array_map('intval', $_POST['client_groups']))) : [];
+    $targetClients  = isset($_POST['target_clients']) && is_array($_POST['target_clients'])
+        ? array_values(array_unique(array_map('intval', $_POST['target_clients']))) : [];
+    $targetServers  = isset($_POST['target_servers']) && is_array($_POST['target_servers'])
+        ? array_values(array_unique(array_map('intval', $_POST['target_servers']))) : [];
+    $targetProducts = isset($_POST['target_products']) && is_array($_POST['target_products'])
+        ? array_values(array_unique(array_map('intval', $_POST['target_products']))) : [];
     $pageSlugs = isset($_POST['page_slugs_raw'])
         ? array_values(array_filter(array_map('trim', explode("\n", $_POST['page_slugs_raw'])), fn($v) => $v !== ''))
         : [];
@@ -462,6 +550,9 @@ function noticebanner_build_payload(): array {
         'publish_at'           => !empty($_POST['publish_at'])   ? date('Y-m-d H:i:s', strtotime($_POST['publish_at']))   : null,
         'tags'                 => $tags,
         'client_groups'        => json_encode($clientGroups),
+        'target_clients'       => json_encode($targetClients),
+        'target_servers'       => json_encode($targetServers),
+        'target_products'      => json_encode($targetProducts),
         'page_slugs'           => json_encode($pageSlugs),
         'webhook_url'          => trim($_POST['notice_webhook_url'] ?? ''),
         'is_pinned'            => isset($_POST['is_pinned']) ? 1 : 0,
@@ -485,6 +576,8 @@ function noticebanner_output($vars) {
     $departments  = noticebanner_get_departments();
     $admins       = noticebanner_get_admins();
     $clientGroups = noticebanner_get_client_groups();
+    $servers      = noticebanner_get_servers();
+    $products     = noticebanner_get_products();
     $allTags      = noticebanner_get_all_tags();
     $templates    = noticebanner_get_templates();
 
@@ -492,6 +585,22 @@ function noticebanner_output($vars) {
     $message     = '';
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+        // ── Client search (AJAX) ──
+        if (isset($_POST['nb_client_search'])) {
+            header('Content-Type: application/json');
+            $results = noticebanner_search_clients($_POST['nb_client_search'] ?? '');
+            $out = [];
+            foreach ($results as $c) {
+                $out[] = [
+                    'id'   => (int)$c->id,
+                    'text' => $c->firstname . ' ' . $c->lastname . ' (' . $c->email . ')'
+                        . (!empty($c->companyname) ? ' — ' . $c->companyname : ''),
+                ];
+            }
+            echo json_encode($out);
+            exit;
+        }
 
         // ── Poll vote ──
         if (isset($_POST['poll_vote'], $_POST['poll_notice_id'])) {
@@ -654,6 +763,9 @@ function noticebanner_output($vars) {
                 $edit_notice['poll_results']    = json_decode($edit_notice['poll_results'] ?? '{}', true) ?: [];
                 $edit_notice['assigned_admins'] = json_decode($edit_notice['assigned_admins'] ?? '[]', true) ?: [];
                 $edit_notice['client_groups']   = json_decode($edit_notice['client_groups'] ?? '[]', true) ?: [];
+                $edit_notice['target_clients']  = json_decode($edit_notice['target_clients'] ?? '[]', true) ?: [];
+                $edit_notice['target_servers']  = json_decode($edit_notice['target_servers'] ?? '[]', true) ?: [];
+                $edit_notice['target_products'] = json_decode($edit_notice['target_products'] ?? '[]', true) ?: [];
                 $edit_notice['page_slugs']      = json_decode($edit_notice['page_slugs'] ?? '[]', true) ?: [];
             }
         }
