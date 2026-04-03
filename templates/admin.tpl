@@ -1296,102 +1296,126 @@ $licNextCheck  = $licenseStatus['next_check_after'] ?? null;
 $licLastError  = $licenseStatus['last_error'] ?? null;
 ?>
 
-<!-- License status card -->
+<!-- License key entry + status card -->
 <div class="nb-card">
     <div class="nb-card-header">
-        <h2>🔑 License Status</h2>
+        <h2>🔑 License Key</h2>
         <span class="nb-lic-badge <?php echo $licBadgeClass; ?>"><?php echo htmlspecialchars($licBadgeLabel); ?></span>
     </div>
     <div class="nb-card-body">
-        <div class="nb-grid">
-            <div class="nb-field">
-                <label>Plan</label>
-                <div style="padding:8px 0;font-size:15px;font-weight:700;color:<?php echo $isPro ? '#166534' : '#854d0e'; ?>;">
-                    <?php echo $isPro ? '⭐ Pro' : '🔒 Free'; ?>
+
+        <!-- Key entry form -->
+        <form method="post" style="margin-bottom:20px;">
+            <div class="nb-field" style="max-width:520px;">
+                <label>Your License Key</label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                    <input type="text" name="nb_license_key_input"
+                        value="<?php echo htmlspecialchars($licKey); ?>"
+                        placeholder="e.g. HSPELL-XXXXX-XXXXX"
+                        style="flex:1;min-width:220px;font-family:monospace;letter-spacing:0.05em;">
+                    <button type="submit" name="nb_license_save_key" value="1" class="nb-btn nb-btn-primary">
+                        💾 Save &amp; Validate
+                    </button>
+                    <?php if ($licKey): ?>
+                    <button type="submit" name="nb_license_save_key" value="1"
+                        onclick="document.querySelector('[name=nb_license_key_input]').value=''"
+                        class="nb-btn nb-btn-ghost nb-btn-sm" title="Clear key and revert to Free tier">
+                        ✕ Clear Key
+                    </button>
+                    <?php endif; ?>
                 </div>
+                <span style="font-size:12px;color:#94a3b8;margin-top:4px;">
+                    Enter the key you received from HostingSpell. It will be validated immediately.
+                </span>
             </div>
-            <div class="nb-field">
-                <label>Status</label>
-                <div style="padding:8px 0;font-size:14px;">
-                    <?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $licStatus))); ?>
+        </form>
+
+        <!-- Status details (only shown when a key exists) -->
+        <?php if ($licKey): ?>
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 18px;">
+            <div class="nb-grid-4" style="gap:12px;">
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Plan</div>
+                    <div style="font-size:15px;font-weight:800;color:<?php echo $isPro ? '#166534' : '#854d0e'; ?>;">
+                        <?php echo $isPro ? '⭐ Pro' : '🔒 Free'; ?>
+                    </div>
                 </div>
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Status</div>
+                    <div style="font-size:14px;"><?php echo htmlspecialchars(ucfirst(str_replace('_', ' ', $licStatus))); ?></div>
+                </div>
+                <?php if ($licIssuedTo): ?>
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Issued To</div>
+                    <div style="font-size:14px;"><?php echo htmlspecialchars($licIssuedTo); ?></div>
+                </div>
+                <?php endif; ?>
+                <?php if ($licExpires): ?>
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Expires</div>
+                    <div style="font-size:14px;"><?php echo htmlspecialchars(date('M j, Y', strtotime($licExpires))); ?></div>
+                </div>
+                <?php endif; ?>
+                <?php if ($licLastOk): ?>
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Last Validated</div>
+                    <div style="font-size:13px;color:#475569;"><?php echo htmlspecialchars(date('M j, Y g:ia', strtotime($licLastOk))); ?></div>
+                </div>
+                <?php endif; ?>
+                <?php if ($licNextCheck): ?>
+                <div>
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Next Check</div>
+                    <div style="font-size:13px;color:#475569;"><?php echo htmlspecialchars(date('M j, Y g:ia', strtotime($licNextCheck))); ?></div>
+                </div>
+                <?php endif; ?>
             </div>
-            <?php if ($licIssuedTo): ?>
-            <div class="nb-field">
-                <label>Issued To</label>
-                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars($licIssuedTo); ?></div>
-            </div>
-            <?php endif; ?>
-            <?php if ($licExpires): ?>
-            <div class="nb-field">
-                <label>Expires At</label>
-                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(date('M j, Y', strtotime($licExpires))); ?></div>
-            </div>
-            <?php endif; ?>
-            <?php if ($licLastOk): ?>
-            <div class="nb-field">
-                <label>Last Validated</label>
-                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(date('M j, Y g:ia', strtotime($licLastOk))); ?></div>
-            </div>
-            <?php endif; ?>
-            <?php if ($licNextCheck): ?>
-            <div class="nb-field">
-                <label>Next Check</label>
-                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(date('M j, Y g:ia', strtotime($licNextCheck))); ?></div>
-            </div>
+            <?php if ($licLastError): ?>
+            <div class="nb-alert nb-alert-danger" style="margin-top:12px;margin-bottom:0;">⚠ <?php echo htmlspecialchars($licLastError); ?></div>
             <?php endif; ?>
         </div>
-        <?php if ($licLastError): ?>
-        <div class="nb-alert nb-alert-danger" style="margin-top:12px;">⚠ <?php echo htmlspecialchars($licLastError); ?></div>
-        <?php endif; ?>
-        <form method="post" style="margin-top:16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-            <button type="submit" name="nb_license_validate_now" value="1" class="nb-btn nb-btn-primary nb-btn-sm">↻ Validate Now</button>
-            <a href="https://hostingspell.com" target="_blank" rel="noopener" class="nb-btn nb-btn-ghost nb-btn-sm">🛒 Get Pro License</a>
+
+        <form method="post" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="submit" name="nb_license_validate_now" value="1" class="nb-btn nb-btn-ghost nb-btn-sm">↻ Re-check Now</button>
             <a href="https://hostingspell.com/support" target="_blank" rel="noopener" class="nb-btn nb-btn-ghost nb-btn-sm">💬 Support</a>
         </form>
+        <?php else: ?>
+        <div style="padding:12px 0 4px;font-size:13px;color:#64748b;">
+            No key entered — running in <strong>Free tier</strong>
+            (<?php echo $activeCount; ?>/<?php echo $freeCap; ?> notices).
+            <a href="https://hostingspell.com" target="_blank" rel="noopener" style="color:#6366f1;font-weight:600;">Get a Pro license →</a>
+        </div>
+        <?php endif; ?>
+
     </div>
 </div>
 
-<!-- Settings card -->
+<!-- Plugin info card (read-only) -->
 <div class="nb-card">
     <div class="nb-card-header">
-        <h2>⚙ Plugin Settings</h2>
+        <h2>⚙ Plugin Info</h2>
     </div>
     <div class="nb-card-body">
-        <p style="font-size:13px;color:#64748b;margin:0 0 16px;">These settings are stored in WHMCS addon module configuration. To change them, go to
-            <strong>Setup → Addon Modules → Notice Banner → Configure</strong>.
-        </p>
-        <div class="nb-grid">
-            <div class="nb-field">
-                <label>License Key</label>
-                <div style="padding:8px 0;font-size:14px;font-family:monospace;">
-                    <?php echo $licKey ? (substr($licKey, 0, 8) . str_repeat('•', min(24, max(0, strlen($licKey) - 8)))) : '<em style="color:#94a3b8;">Not set</em>'; ?>
-                </div>
+        <div class="nb-grid-4" style="gap:12px;margin-bottom:16px;">
+            <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Module Version</div>
+                <div style="font-size:14px;">3.1.0</div>
             </div>
-            <div class="nb-field">
-                <label>Free Tier Max Notices</label>
-                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars((string)$freeCap); ?></div>
+            <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">PHP Version</div>
+                <div style="font-size:14px;"><?php echo htmlspecialchars(PHP_VERSION); ?></div>
             </div>
-            <div class="nb-field">
-                <label>License Check Interval</label>
-                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(noticebanner_license_get_setting('license_check_interval_hours', '24')); ?> hours</div>
+            <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Active Notices</div>
+                <div style="font-size:14px;"><?php echo $activeCount; ?> / <?php echo $isPro ? '∞' : $freeCap; ?></div>
             </div>
-            <div class="nb-field">
-                <label>Module Version</label>
-                <div style="padding:8px 0;font-size:14px;">3.1.0</div>
-            </div>
-            <div class="nb-field">
-                <label>PHP Version</label>
-                <div style="padding:8px 0;font-size:14px;"><?php echo htmlspecialchars(PHP_VERSION); ?></div>
-            </div>
-            <div class="nb-field">
-                <label>Active Notices</label>
-                <div style="padding:8px 0;font-size:14px;"><?php echo $activeCount; ?> / <?php echo $isPro ? '∞' : $freeCap; ?></div>
+            <div>
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin-bottom:4px;">Free Notice Cap</div>
+                <div style="font-size:14px;"><?php echo $freeCap; ?> <span style="font-size:11px;color:#94a3b8;">(set by license server)</span></div>
             </div>
         </div>
-        <div style="margin-top:16px;padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#475569;">
-            <strong>Free tier features:</strong> Create &amp; manage notices with title, markdown content, visibility, colors, priority, timestamp, expand/dismiss.<br>
-            <strong>Pro features:</strong> Polls, ticket button, webhooks, tags, templates, clone, scheduling (publish/expire), page targeting, client/server/product targeting, admin assignment, acknowledgements, predefined votes, poll export, activity log, widget CRUD.
+        <div style="padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;color:#475569;line-height:1.6;">
+            <strong>Free tier:</strong> Title, markdown content, visibility, colors, priority, timestamp, expand/dismiss — up to <?php echo $freeCap; ?> notices.<br>
+            <strong>Pro:</strong> Polls, ticket button, webhooks, tags, templates, clone, scheduling, page/client/server/product targeting, admin assignment, acknowledgements, predefined votes, poll export, activity log, widget CRUD.
         </div>
     </div>
 </div>

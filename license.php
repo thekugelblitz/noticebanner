@@ -2,8 +2,8 @@
 /**
  * Notice Banner — License Engine
  *
- * Validates against the HostingSpell license API and caches the result
- * in mod_noticebanner_license to avoid repeated remote calls.
+ * License key is stored in mod_noticebanner_license (not in tbladdonmodules).
+ * free_max_notices comes from the API response per-key (not editable by customer).
  *
  * Remote endpoint: https://manage.hostingspell.com/api/validate.php
  */
@@ -18,6 +18,7 @@ define('NB_LICENSE_PRODUCT',     'noticebanner-whmcs');
 define('NB_LICENSE_API_URL',     'https://manage.hostingspell.com/api/validate.php');
 define('NB_LICENSE_CACHE_HOURS', 24);  // re-check every 24 h
 define('NB_LICENSE_GRACE_HOURS', 72);  // keep Pro for 72 h if API unreachable
+define('NB_LICENSE_FREE_CAP',    3);   // default free cap if API hasn't responded yet
 
 // ─── Cache table ──────────────────────────────────────────────────────────────
 
@@ -32,33 +33,60 @@ function noticebanner_license_ensure_table(): void {
             $schema->create('mod_noticebanner_license', function ($t) {
                 $t->increments('id');
                 $t->string('cache_key', 64)->unique();
+                $t->string('license_key_stored', 100)->default(''); // key entered by admin
                 $t->string('status', 30)->default('unknown');
                 $t->string('plan', 20)->default('free');
                 $t->string('issued_to', 200)->default('');
+                $t->integer('free_max_notices')->default(NB_LICENSE_FREE_CAP); // set by API
                 $t->timestamp('license_expires_at')->nullable();
                 $t->timestamp('last_ok_at')->nullable();
                 $t->timestamp('next_check_after')->nullable();
                 $t->text('last_error')->nullable();
                 $t->timestamps();
             });
+        } else {
+            // Add columns if upgrading from older schema
+            if (!$schema->hasColumn('mod_noticebanner_license', 'license_key_stored')) {
+                $schema->table('mod_noticebanner_license', function ($t) {
+                    $t->string('license_key_stored', 100)->default('')->after('cache_key');
+                });
+            }
+            if (!$schema->hasColumn('mod_noticebanner_license', 'free_max_notices')) {
+                $schema->table('mod_noticebanner_license', function ($t) {
+                    $t->integer('free_max_notices')->default(NB_LICENSE_FREE_CAP)->after('issued_to');
+                });
+            }
         }
     } catch (\Exception $e) {}
 }
 }
 
-// ─── Settings helpers ─────────────────────────────────────────────────────────
+// ─── Key storage (in our own table, not tbladdonmodules) ──────────────────────
 
 if (!function_exists('noticebanner_license_get_key')) {
 function noticebanner_license_get_key(): string {
+    noticebanner_license_ensure_table();
     try {
-        $val = \WHMCS\Database\Capsule::table('tbladdonmodules')
-            ->where('module', 'noticebanner')
-            ->where('setting', 'license_key')
-            ->value('value');
-        return trim((string)($val ?? ''));
+        $row = \WHMCS\Database\Capsule::table('mod_noticebanner_license')
+            ->where('cache_key', 'state')->first(['license_key_stored']);
+        return trim((string)($row->license_key_stored ?? ''));
     } catch (\Exception $e) { return ''; }
 }
 }
+
+if (!function_exists('noticebanner_license_save_key')) {
+function noticebanner_license_save_key(string $key): void {
+    noticebanner_license_ensure_table();
+    try {
+        \WHMCS\Database\Capsule::table('mod_noticebanner_license')->updateOrInsert(
+            ['cache_key' => 'state'],
+            ['license_key_stored' => trim($key), 'updated_at' => date('Y-m-d H:i:s'), 'created_at' => date('Y-m-d H:i:s')]
+        );
+    } catch (\Exception $e) {}
+}
+}
+
+// ─── Settings helper (only for non-sensitive settings still in tbladdonmodules) ─
 
 if (!function_exists('noticebanner_license_get_setting')) {
 function noticebanner_license_get_setting(string $setting, $default = '') {
@@ -81,7 +109,8 @@ function noticebanner_license_domain(): string {
             ->where('setting', 'SystemURL')
             ->value('value');
         $host = strtolower(parse_url((string)($sysUrl ?? ''), PHP_URL_HOST) ?? '');
-        return preg_replace('/^www\./', '', $host) ?: strtolower(preg_replace('/^www\./', '', $_SERVER['HTTP_HOST'] ?? 'unknown'));
+        return preg_replace('/^www\./', '', $host)
+            ?: strtolower(preg_replace('/^www\./', '', $_SERVER['HTTP_HOST'] ?? 'unknown'));
     } catch (\Exception $e) {
         return strtolower(preg_replace('/^www\./', '', $_SERVER['HTTP_HOST'] ?? 'unknown'));
     }
@@ -106,7 +135,10 @@ function noticebanner_license_write_cache(array $data): void {
     try {
         \WHMCS\Database\Capsule::table('mod_noticebanner_license')->updateOrInsert(
             ['cache_key' => 'state'],
-            array_merge($data, ['updated_at' => date('Y-m-d H:i:s')])
+            array_merge($data, [
+                'updated_at' => date('Y-m-d H:i:s'),
+                'created_at' => date('Y-m-d H:i:s'),
+            ])
         );
     } catch (\Exception $e) {}
 }
@@ -137,11 +169,8 @@ function noticebanner_license_remote_validate(string $licenseKey, string $domain
     } catch (\Exception $e) { return null; }
 
     if (!$raw) return null;
-
     $resp = json_decode($raw, true);
-    if (!is_array($resp)) return null;
-
-    return $resp;
+    return is_array($resp) ? $resp : null;
 }
 }
 
@@ -158,6 +187,7 @@ function noticebanner_license_refresh(bool $force = false): void {
             'status'             => 'no_key',
             'plan'               => 'free',
             'issued_to'          => '',
+            'free_max_notices'   => NB_LICENSE_FREE_CAP,
             'license_expires_at' => null,
             'last_ok_at'         => null,
             'next_check_after'   => date('Y-m-d H:i:s', strtotime('+1 hour')),
@@ -190,6 +220,7 @@ function noticebanner_license_refresh(bool $force = false): void {
             'status'             => $statusNow,
             'plan'               => ($statusNow === 'valid' && $cache) ? $cache->plan : 'free',
             'issued_to'          => $cache ? $cache->issued_to : '',
+            'free_max_notices'   => $cache ? (int)$cache->free_max_notices : NB_LICENSE_FREE_CAP,
             'license_expires_at' => $cache ? $cache->license_expires_at : null,
             'last_ok_at'         => $cache ? $cache->last_ok_at : null,
             'next_check_after'   => date('Y-m-d H:i:s', strtotime('+30 minutes')),
@@ -200,17 +231,19 @@ function noticebanner_license_refresh(bool $force = false): void {
         return;
     }
 
-    $isValid   = !empty($payload['valid']);
-    $plan      = ($isValid && ($payload['plan'] ?? '') === 'pro') ? 'pro' : 'free';
-    $expiresAt = !empty($payload['expires_at']) ? date('Y-m-d H:i:s', strtotime($payload['expires_at'])) : null;
-    $issuedTo  = $payload['issued_to'] ?? '';
-    $status    = $isValid ? 'valid' : 'invalid';
-    $errMsg    = $isValid ? null : ($payload['message'] ?? 'Invalid');
+    $isValid      = !empty($payload['valid']);
+    $plan         = ($isValid && ($payload['plan'] ?? '') === 'pro') ? 'pro' : 'free';
+    $expiresAt    = !empty($payload['expires_at']) ? date('Y-m-d H:i:s', strtotime($payload['expires_at'])) : null;
+    $issuedTo     = $payload['issued_to'] ?? '';
+    $freeMaxNotices = isset($payload['free_max_notices']) ? max(1, (int)$payload['free_max_notices']) : NB_LICENSE_FREE_CAP;
+    $status       = $isValid ? 'valid' : 'invalid';
+    $errMsg       = $isValid ? null : ($payload['message'] ?? 'Invalid');
 
     noticebanner_license_write_cache([
         'status'             => $status,
         'plan'               => $plan,
         'issued_to'          => $issuedTo,
+        'free_max_notices'   => $freeMaxNotices,
         'license_expires_at' => $expiresAt,
         'last_ok_at'         => $isValid ? $now : null,
         'next_check_after'   => date('Y-m-d H:i:s', strtotime("+{$intervalHours} hours")),
@@ -249,17 +282,20 @@ function noticebanner_license_status(): array {
     $cache = noticebanner_license_read_cache();
     return $cache ? (array)$cache : [
         'status' => 'unknown', 'plan' => 'free', 'issued_to' => '',
+        'free_max_notices' => NB_LICENSE_FREE_CAP,
         'license_expires_at' => null, 'last_ok_at' => null,
         'next_check_after' => null, 'last_error' => null,
+        'license_key_stored' => '',
     ];
 }
 }
 
-// ─── Free-tier cap ────────────────────────────────────────────────────────────
+// ─── Free-tier cap (set by API per key, not editable by customer) ─────────────
 
 if (!function_exists('noticebanner_free_notice_cap')) {
 function noticebanner_free_notice_cap(): int {
-    return max(1, (int)noticebanner_license_get_setting('free_max_notices', 3));
+    $cache = noticebanner_license_read_cache();
+    return max(1, (int)($cache->free_max_notices ?? NB_LICENSE_FREE_CAP));
 }
 }
 

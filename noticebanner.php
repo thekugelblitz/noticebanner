@@ -22,26 +22,6 @@ function noticebanner_config() {
                 'Size'         => '60',
                 'Description'  => 'POST JSON payload to this URL whenever a notice is created or updated (Slack/Discord/custom). Leave blank to disable.',
             ],
-            'license_key' => [
-                'FriendlyName' => 'License Key',
-                'Type'         => 'text',
-                'Size'         => '60',
-                'Description'  => 'Enter your HostingSpell Pro license key to unlock advanced features.',
-            ],
-            'free_max_notices' => [
-                'FriendlyName' => 'Free Tier Max Notices',
-                'Type'         => 'text',
-                'Size'         => '5',
-                'Default'      => '3',
-                'Description'  => 'Maximum number of active notices allowed without a Pro license (default: 3).',
-            ],
-            'license_check_interval_hours' => [
-                'FriendlyName' => 'License Check Interval (hours)',
-                'Type'         => 'text',
-                'Size'         => '5',
-                'Default'      => '24',
-                'Description'  => 'How often to re-validate the license key with the HostingSpell server (default: 24).',
-            ],
         ],
     ];
 }
@@ -1307,10 +1287,34 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── License: validate now ──
+        // ── License: save key ──
+        if (isset($_POST['nb_license_save_key'])) {
+            $newKey = trim($_POST['nb_license_key_input'] ?? '');
+            noticebanner_license_save_key($newKey);
+            // Force re-validate with the new key
+            noticebanner_license_refresh(true);
+            $licStatus = noticebanner_license_status();
+            if ($licStatus['status'] === 'valid') {
+                $message = '<div class="nb-alert nb-alert-success">✓ License key saved and validated successfully. Pro features are now active.</div>';
+            } elseif ($newKey === '') {
+                $message = '<div class="nb-alert nb-alert-success">License key cleared. Running in Free tier.</div>';
+            } else {
+                $errDetail = $licStatus['last_error'] ?? 'Could not validate key.';
+                $message = '<div class="nb-alert nb-alert-danger">⚠ Key saved but validation failed: ' . htmlspecialchars($errDetail) . '</div>';
+            }
+            goto nb_post_end;
+        }
+
+        // ── License: validate now (re-check existing key) ──
         if (isset($_POST['nb_license_validate_now'])) {
             noticebanner_license_refresh(true);
-            $message = '<div class="nb-alert nb-alert-success">License validation refreshed.</div>';
+            $licStatus = noticebanner_license_status();
+            if ($licStatus['status'] === 'valid') {
+                $message = '<div class="nb-alert nb-alert-success">✓ License validated successfully.</div>';
+            } else {
+                $errDetail = $licStatus['last_error'] ?? 'Unknown error.';
+                $message = '<div class="nb-alert nb-alert-danger">⚠ Validation failed: ' . htmlspecialchars($errDetail) . '</div>';
+            }
         }
 
         nb_post_end:
