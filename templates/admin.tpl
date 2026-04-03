@@ -908,7 +908,7 @@ $now = date('Y-m-d H:i:s');
                             <div style="font-size:11px;color:#a16207;margin-bottom:10px;padding:6px;background:#fff;border-radius:5px;border:1px solid #fde68a;">No votes recorded yet.</div>
                             <?php endif; ?>
 
-                            <!-- Add predefined votes — one count input per option, keyed by base64(option) -->
+                            <!-- Add predefined votes — parallel arrays (hex option + count per row) so POST keys never use +/= from base64 -->
                             <form method="post">
                                 <input type="hidden" name="predefined_poll_notice_id" value="<?php echo (int)$n['id']; ?>">
                                 <input type="hidden" name="predefined_poll_vote" value="1">
@@ -926,12 +926,13 @@ $now = date('Y-m-d H:i:s');
                                     </thead>
                                     <tbody>
                                         <?php foreach ($n['poll_options'] as $opt):
-                                            $optKey = base64_encode($opt);
+                                            $optHex = bin2hex($opt);
                                         ?>
                                         <tr style="border-bottom:1px solid #fde68a;">
                                             <td style="padding:5px 6px;font-size:12px;"><?php echo htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8'); ?></td>
                                             <td style="padding:5px 6px;text-align:center;">
-                                                <input type="number" name="predefined_poll_counts[<?php echo $optKey; ?>]" value="0" min="0" max="9999"
+                                                <input type="hidden" name="predefined_poll_option_hex[]" value="<?php echo htmlspecialchars($optHex, ENT_QUOTES, 'UTF-8'); ?>">
+                                                <input type="number" name="predefined_poll_add_counts[]" value="0" min="0" max="9999"
                                                     style="width:60px;font-size:12px;padding:3px 5px;border:1px solid #fcd34d;border-radius:4px;text-align:center;">
                                             </td>
                                         </tr>

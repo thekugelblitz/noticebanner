@@ -871,39 +871,50 @@ function noticebanner_output($vars) {
         }
 
         // ── Predefined votes (admin only) ──────────────────────────────────────
-        // Form sends: predefined_poll_counts[base64(option)] = N  (N=0 means skip)
+        // Form sends parallel arrays: predefined_poll_option_hex[] + predefined_poll_add_counts[]
         if (isset($_POST['predefined_poll_vote'], $_POST['predefined_poll_notice_id'])) {
-            $nid    = (int)$_POST['predefined_poll_notice_id'];
-            $label  = trim($_POST['predefined_poll_label'] ?? '') ?: 'Predefined Vote';
-            $rawCounts = isset($_POST['predefined_poll_counts']) && is_array($_POST['predefined_poll_counts'])
-                         ? $_POST['predefined_poll_counts'] : [];
+            $nid   = (int)$_POST['predefined_poll_notice_id'];
+            $label = trim($_POST['predefined_poll_label'] ?? '') ?: 'Predefined Vote';
+            $hexes = isset($_POST['predefined_poll_option_hex']) && is_array($_POST['predefined_poll_option_hex'])
+                     ? $_POST['predefined_poll_option_hex'] : [];
+            $adds  = isset($_POST['predefined_poll_add_counts']) && is_array($_POST['predefined_poll_add_counts'])
+                     ? $_POST['predefined_poll_add_counts'] : [];
 
-            if ($nid && !empty($rawCounts)) {
+            if ($nid && !empty($hexes)) {
                 try {
                     $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
                     if ($row) {
+                        // Whitelist: option strings for this notice (decoded + trimmed)
+                        $allowed = array_map(
+                            fn($o) => html_entity_decode(trim((string)$o), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+                            json_decode($row->poll_options ?? '[]', true) ?: []
+                        );
+                        $allowed = array_values(array_filter($allowed, fn($o) => $o !== ''));
+
                         $results = json_decode($row->poll_results ?? '{}', true) ?: [];
-                        // Re-key results with decoded keys (clean any stored entities)
                         $cleanResults = [];
                         foreach ($results as $k => $v) {
                             $cleanResults[html_entity_decode($k, ENT_QUOTES | ENT_HTML5, 'UTF-8')] = (int)$v;
                         }
-                        $now = date('Y-m-d H:i:s');
+                        $now     = date('Y-m-d H:i:s');
                         $applied = 0;
 
-                        foreach ($rawCounts as $b64key => $rawCount) {
-                            $count = (int)$rawCount;
+                        foreach ($hexes as $i => $hexRaw) {
+                            $count = max(0, (int)($adds[$i] ?? 0));
                             if ($count <= 0) continue;
 
-                            // Decode the base64 key to get the real option string
-                            $opt = base64_decode((string)$b64key, true);
-                            if ($opt === false || $opt === '') continue;
-                            $opt = html_entity_decode($opt, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                            $hex = strtolower(preg_replace('/[^0-9a-f]/', '', (string)$hexRaw));
+                            if ($hex === '' || (strlen($hex) % 2) !== 0) continue;
 
-                            // Update aggregate
+                            $opt = @hex2bin($hex);
+                            if ($opt === false || $opt === '') continue;
+                            $opt = trim(html_entity_decode($opt, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+
+                            // Must match a real poll option (prevents tampered POST)
+                            if (!in_array($opt, $allowed, true)) continue;
+
                             $cleanResults[$opt] = ($cleanResults[$opt] ?? 0) + $count;
 
-                            // Upsert predefined vote record (deduplicated by notice+label+option)
                             $existing = \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
                                 ->where('notice_id',     $nid)
                                 ->where('is_predefined', 1)
