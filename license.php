@@ -42,6 +42,7 @@ function noticebanner_license_ensure_table(): void {
                 $t->timestamp('last_ok_at')->nullable();
                 $t->timestamp('next_check_after')->nullable();
                 $t->text('last_error')->nullable();
+                $t->text('last_http_debug')->nullable();
                 $t->timestamps();
             });
         } else {
@@ -54,6 +55,11 @@ function noticebanner_license_ensure_table(): void {
             if (!$schema->hasColumn('mod_noticebanner_license', 'free_max_notices')) {
                 $schema->table('mod_noticebanner_license', function ($t) {
                     $t->integer('free_max_notices')->default(NB_LICENSE_FREE_CAP)->after('issued_to');
+                });
+            }
+            if (!$schema->hasColumn('mod_noticebanner_license', 'last_http_debug')) {
+                $schema->table('mod_noticebanner_license', function ($t) {
+                    $t->text('last_http_debug')->nullable()->after('last_error');
                 });
             }
         }
@@ -144,33 +150,158 @@ function noticebanner_license_write_cache(array $data): void {
 }
 }
 
+// ─── HTTP POST (cURL preferred — many hosts disable allow_url_fopen for URLs) ─
+
+if (!function_exists('noticebanner_license_http_post_json')) {
+/**
+ * POST JSON to URL. Returns diagnostic array; sets decoded payload if JSON is valid.
+ */
+function noticebanner_license_http_post_json(string $url, array $payload): array {
+    $body = json_encode($payload);
+    $out  = [
+        'url'                 => $url,
+        'php_allow_url_fopen' => filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN),
+        'curl_available'      => function_exists('curl_init'),
+        'transport'           => '',
+        'http_code'           => 0,
+        'raw'                 => '',
+        'raw_preview'         => '',
+        'error'               => '',
+        'json_ok'             => false,
+        'decoded'             => null,
+    ];
+
+    if (function_exists('curl_init')) {
+        $out['transport'] = 'curl';
+        $ch = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => $body,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 10,
+            CURLOPT_TIMEOUT        => 15,
+            CURLOPT_HTTPHEADER     => [
+                'Content-Type: application/json',
+                'Content-Length: ' . strlen($body),
+                'User-Agent: NoticeBanner-WHMCS/3.1.0',
+            ],
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+        ]);
+        $raw = curl_exec($ch);
+        $errno = curl_errno($ch);
+        $cerr  = curl_error($ch);
+        $out['http_code'] = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        if ($raw === false || $errno) {
+            $out['error'] = 'cURL error ' . $errno . ': ' . $cerr;
+            $out['raw']   = '';
+        } else {
+            $out['raw'] = (string)$raw;
+        }
+    } elseif (filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
+        $out['transport'] = 'file_get_contents';
+        try {
+            $ctx = stream_context_create(['http' => [
+                'method'        => 'POST',
+                'header'        => "Content-Type: application/json\r\nContent-Length: " . strlen($body) . "\r\nUser-Agent: NoticeBanner-WHMCS/3.1.0\r\n",
+                'content'       => $body,
+                'timeout'       => 15,
+                'ignore_errors' => true,
+            ]]);
+            $raw = @file_get_contents($url, false, $ctx);
+            if ($raw === false) {
+                $out['error'] = 'file_get_contents failed (check SSL, DNS, and firewall outbound to port 443).';
+            } else {
+                $out['raw'] = (string)$raw;
+            }
+            if (isset($http_response_header) && !empty($http_response_header[0]) && preg_match('/\s(\d{3})\s/', $http_response_header[0], $m)) {
+                $out['http_code'] = (int)$m[1];
+            }
+        } catch (\Throwable $e) {
+            $out['error'] = $e->getMessage();
+        }
+    } else {
+        $out['error'] = 'Outbound HTTP blocked: cURL extension not loaded and allow_url_fopen is Off. Enable one of them on this server.';
+    }
+
+    $preview = $out['raw'];
+    if (strlen($preview) > 1200) {
+        $preview = substr($preview, 0, 1200) . "\n… (truncated)";
+    }
+    $out['raw_preview'] = $preview;
+
+    if ($out['raw'] !== '') {
+        $dec = json_decode($out['raw'], true);
+        if (is_array($dec)) {
+            $out['json_ok'] = true;
+            $out['decoded'] = $dec;
+        } else {
+            $out['error'] = ($out['error'] ?: '') . ($out['error'] ? ' ' : '') . 'Response is not valid JSON.';
+        }
+    }
+
+    return $out;
+}
+}
+
+if (!function_exists('noticebanner_license_debug_format')) {
+function noticebanner_license_debug_format(array $dbg): string {
+    $lines = [
+        'URL:              ' . ($dbg['url'] ?? ''),
+        'Transport:        ' . ($dbg['transport'] ?: '(none)'),
+        'cURL available:   ' . (($dbg['curl_available'] ?? false) ? 'yes' : 'no'),
+        'allow_url_fopen:  ' . (($dbg['php_allow_url_fopen'] ?? false) ? 'On' : 'Off'),
+        'HTTP status:      ' . (string)($dbg['http_code'] ?? 0),
+        'Error:            ' . ($dbg['error'] ?: '(none)'),
+        'JSON parsed:      ' . (($dbg['json_ok'] ?? false) ? 'yes' : 'no'),
+        '--- Response body (preview) ---',
+        $dbg['raw_preview'] ?? '',
+    ];
+    return implode("\n", $lines);
+}
+}
+
 // ─── Remote call ──────────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_license_remote_validate')) {
 function noticebanner_license_remote_validate(string $licenseKey, string $domain): ?array {
     if ($licenseKey === '') return null;
 
-    $body = json_encode([
+    $http = noticebanner_license_http_post_json(NB_LICENSE_API_URL, [
         'license_key' => $licenseKey,
         'product'     => NB_LICENSE_PRODUCT,
         'domain'      => $domain,
         'version'     => '3.1.0',
     ]);
 
-    try {
-        $ctx = stream_context_create(['http' => [
-            'method'        => 'POST',
-            'header'        => "Content-Type: application/json\r\nContent-Length: " . strlen($body) . "\r\nUser-Agent: NoticeBanner-WHMCS/3.1.0\r\n",
-            'content'       => $body,
-            'timeout'       => 8,
-            'ignore_errors' => true,
-        ]]);
-        $raw = @file_get_contents(NB_LICENSE_API_URL, false, $ctx);
-    } catch (\Exception $e) { return null; }
+    $GLOBALS['noticebanner_last_license_http'] = $http;
 
-    if (!$raw) return null;
-    $resp = json_decode($raw, true);
-    return is_array($resp) ? $resp : null;
+    if (!empty($http['decoded']) && is_array($http['decoded'])) {
+        return $http['decoded'];
+    }
+    return null;
+}
+}
+
+if (!function_exists('noticebanner_license_run_connection_diagnostics')) {
+/**
+ * Test reachability without requiring a real key (uses a dummy POST).
+ */
+function noticebanner_license_run_connection_diagnostics(): string {
+    $domain = noticebanner_license_domain();
+    $http   = noticebanner_license_http_post_json(NB_LICENSE_API_URL, [
+        'license_key' => '__diagnostic_ping__',
+        'product'     => NB_LICENSE_PRODUCT,
+        'domain'      => $domain,
+        'version'     => '3.1.0',
+    ]);
+    $GLOBALS['noticebanner_last_license_http'] = $http;
+    $header = "Notice Banner — License server connection test\n"
+        . "WHMCS host (from System URL): {$domain}\n"
+        . str_repeat('=', 60) . "\n";
+    return $header . noticebanner_license_debug_format($http);
 }
 }
 
@@ -192,6 +323,7 @@ function noticebanner_license_refresh(bool $force = false): void {
             'last_ok_at'         => null,
             'next_check_after'   => date('Y-m-d H:i:s', strtotime('+1 hour')),
             'last_error'         => null,
+            'last_http_debug'    => null,
         ]);
         return;
     }
@@ -216,6 +348,11 @@ function noticebanner_license_refresh(bool $force = false): void {
             : $now;
         $statusNow = ($cache && $cache->status === 'valid' && $graceUntil > $now) ? 'valid' : 'error';
 
+        $httpDbg = '';
+        if (!empty($GLOBALS['noticebanner_last_license_http']) && is_array($GLOBALS['noticebanner_last_license_http'])) {
+            $httpDbg = noticebanner_license_debug_format($GLOBALS['noticebanner_last_license_http']);
+        }
+
         noticebanner_license_write_cache([
             'status'             => $statusNow,
             'plan'               => ($statusNow === 'valid' && $cache) ? $cache->plan : 'free',
@@ -225,6 +362,7 @@ function noticebanner_license_refresh(bool $force = false): void {
             'last_ok_at'         => $cache ? $cache->last_ok_at : null,
             'next_check_after'   => date('Y-m-d H:i:s', strtotime('+30 minutes')),
             'last_error'         => 'Could not reach license server at ' . $now,
+            'last_http_debug'    => $httpDbg !== '' ? $httpDbg : null,
         ]);
         $masked = substr($licenseKey, 0, 8) . '****';
         noticebanner_log(null, 'license_check_failed', "Key: $masked, Domain: $domain");
@@ -248,6 +386,7 @@ function noticebanner_license_refresh(bool $force = false): void {
         'last_ok_at'         => $isValid ? $now : null,
         'next_check_after'   => date('Y-m-d H:i:s', strtotime("+{$intervalHours} hours")),
         'last_error'         => $errMsg,
+        'last_http_debug'    => null,
     ]);
 
     $masked = substr($licenseKey, 0, 8) . '****';
@@ -286,6 +425,7 @@ function noticebanner_license_status(): array {
         'license_expires_at' => null, 'last_ok_at' => null,
         'next_check_after' => null, 'last_error' => null,
         'license_key_stored' => '',
+        'last_http_debug' => null,
     ];
 }
 }

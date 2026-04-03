@@ -784,6 +784,8 @@ function noticebanner_output($vars) {
     noticebanner_ensure_table();
     noticebanner_ensure_columns();
 
+    $licenseDiagnosticsOutput = '';
+
     // ── Export poll votes: ?nb_export_votes=<id>&format=csv|json (Pro) ──
     if (!empty($_GET['nb_export_votes'])) {
         if (!noticebanner_license_is_pro()) {
@@ -1315,6 +1317,15 @@ function noticebanner_output($vars) {
                 $errDetail = $licStatus['last_error'] ?? 'Unknown error.';
                 $message = '<div class="nb-alert nb-alert-danger">⚠ Validation failed: ' . htmlspecialchars($errDetail) . '</div>';
             }
+        }
+
+        // ── License: connection diagnostics (no key required) ──
+        if (isset($_POST['nb_license_run_diagnostics'])) {
+            $licenseDiagnosticsOutput = htmlspecialchars(
+                noticebanner_license_run_connection_diagnostics(),
+                ENT_QUOTES,
+                'UTF-8'
+            );
         }
 
         nb_post_end:

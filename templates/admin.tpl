@@ -1372,10 +1372,17 @@ $licLastError  = $licenseStatus['last_error'] ?? null;
             <?php if ($licLastError): ?>
             <div class="nb-alert nb-alert-danger" style="margin-top:12px;margin-bottom:0;">⚠ <?php echo htmlspecialchars($licLastError); ?></div>
             <?php endif; ?>
+            <?php if (!empty($licenseStatus['last_http_debug'])): ?>
+            <details style="margin-top:14px;border:1px solid #fecaca;border-radius:8px;background:#fff;padding:10px 14px;">
+                <summary style="cursor:pointer;font-weight:700;color:#991b1b;font-size:13px;">🔧 Show HTTP connection debug (last failed attempt)</summary>
+                <pre style="margin:12px 0 0;font-size:11px;line-height:1.45;white-space:pre-wrap;word-break:break-word;background:#fef2f2;padding:12px;border-radius:6px;border:1px solid #fecaca;color:#1e293b;"><?php echo htmlspecialchars($licenseStatus['last_http_debug']); ?></pre>
+            </details>
+            <?php endif; ?>
         </div>
 
-        <form method="post" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;">
+        <form method="post" style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
             <button type="submit" name="nb_license_validate_now" value="1" class="nb-btn nb-btn-ghost nb-btn-sm">↻ Re-check Now</button>
+            <button type="submit" name="nb_license_run_diagnostics" value="1" class="nb-btn nb-btn-ghost nb-btn-sm" title="Test HTTPS reachability to the license server">🔧 Connection diagnostics</button>
             <a href="https://hostingspell.com/support" target="_blank" rel="noopener" class="nb-btn nb-btn-ghost nb-btn-sm">💬 Support</a>
         </form>
         <?php else: ?>
@@ -1384,6 +1391,16 @@ $licLastError  = $licenseStatus['last_error'] ?? null;
             (<?php echo $activeCount; ?>/<?php echo $freeCap; ?> notices).
             <a href="https://hostingspell.com" target="_blank" rel="noopener" style="color:#6366f1;font-weight:600;">Get a Pro license →</a>
         </div>
+        <form method="post" style="margin-top:10px;">
+            <button type="submit" name="nb_license_run_diagnostics" value="1" class="nb-btn nb-btn-ghost nb-btn-sm">🔧 Connection diagnostics</button>
+        </form>
+        <?php endif; ?>
+
+        <?php if (!empty($licenseDiagnosticsOutput)): ?>
+        <details open style="margin-top:16px;border:1px solid #c7d2fe;border-radius:8px;background:#eef2ff;padding:10px 14px;">
+            <summary style="cursor:pointer;font-weight:700;color:#3730a3;font-size:13px;">📋 Diagnostic report (just run)</summary>
+            <pre style="margin:12px 0 0;font-size:11px;line-height:1.45;white-space:pre-wrap;word-break:break-word;background:#fff;padding:12px;border-radius:6px;border:1px solid #c7d2fe;color:#1e293b;"><?php echo $licenseDiagnosticsOutput; ?></pre>
+        </details>
         <?php endif; ?>
 
     </div>
