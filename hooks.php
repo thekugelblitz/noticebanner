@@ -107,6 +107,40 @@ if (!class_exists('NoticeBannerHelper')) {
             return '<span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:11px;font-weight:700;background:' . $bg . ';color:' . $fg . ';margin-left:8px;vertical-align:middle;">' . $label . '</span>';
         }
 
+        // ── Get current admin ID from session ────────────────────────────────
+        private static function currentAdminId(): int {
+            // WHMCS stores the logged-in admin ID in $_SESSION['adminid']
+            if (!empty($_SESSION['adminid'])) {
+                return (int)$_SESSION['adminid'];
+            }
+            // Fallback: try the Capsule-based auth object
+            if (class_exists('\WHMCS\Authentication\CurrentUser')) {
+                try {
+                    $user = \WHMCS\Authentication\CurrentUser::adminUser();
+                    if ($user) return (int)$user->id;
+                } catch (\Exception $e) {}
+            }
+            return 0;
+        }
+
+        // ── Resolve admin names from IDs ─────────────────────────────────────
+        private static function adminNames(array $ids): array {
+            if (empty($ids)) return [];
+            try {
+                $rows = \WHMCS\Database\Capsule::table('tbladmins')
+                    ->whereIn('id', $ids)
+                    ->get(['id', 'firstname', 'lastname', 'username'])
+                    ->toArray();
+                $map = [];
+                foreach ($rows as $r) {
+                    $map[(int)$r->id] = $r->firstname . ' ' . $r->lastname;
+                }
+                return $map;
+            } catch (\Exception $e) {
+                return [];
+            }
+        }
+
         // ── Main render ──────────────────────────────────────────────────────
         public static function renderNotices(string $area): string {
             if (!empty(self::$rendered[$area])) return '';
@@ -115,33 +149,61 @@ if (!class_exists('NoticeBannerHelper')) {
             $notices = function_exists('noticebanner_get_notices') ? noticebanner_get_notices() : [];
             if (empty($notices)) return '';
 
+            $currentAdminId = ($area === 'admin') ? self::currentAdminId() : 0;
+
             $html = '';
             foreach ($notices as $n) {
+                // ── Audience gate ──
                 $show = ($area === 'admin' && !empty($n['show_to_admins']))
                      || ($area === 'client' && !empty($n['show_to_clients']));
                 if (!$show) continue;
+
+                // ── Assigned-admin gate (admin area only) ──
+                // If the notice has specific assigned admins, only those admins see it.
+                $assignedAdmins = $n['assigned_admins'] ?? [];
+                if ($area === 'admin' && !empty($assignedAdmins)) {
+                    if ($currentAdminId === 0 || !in_array($currentAdminId, $assignedAdmins, true)) {
+                        continue;
+                    }
+                }
 
                 $id       = 'nb_' . $n['id'];
                 $bg       = $n['bg_color']   ?: '#fffae6';
                 $color    = $n['font_color'] ?: '#222';
                 $priority = $n['priority']   ?? 'normal';
 
-                // Left accent colour based on priority
                 $accentMap = ['critical' => '#dc2626', 'high' => '#f97316', 'normal' => '#2563eb', 'low' => '#9ca3af'];
                 $accent    = $accentMap[$priority] ?? '#2563eb';
 
                 $title   = htmlspecialchars($n['notice_title'] ?? '');
                 $content = self::parseMarkdown($n['notice_content'] ?? '');
 
-                // Timestamp
+                // ── Timestamp ──
                 $tsHtml = '';
                 if (!empty($n['notice_timestamp'])) {
-                    $tsHtml = '<span style="font-size:12px;opacity:0.65;margin-left:10px;">'
-                        . htmlspecialchars(date('M j, Y g:ia', strtotime($n['notice_timestamp'])))
+                    $tsHtml = '<span style="font-size:12px;opacity:0.6;margin-left:10px;font-weight:400;">'
+                        . '🕐 ' . htmlspecialchars(date('M j, Y g:ia', strtotime($n['notice_timestamp'])))
                         . '</span>';
                 }
 
-                // CTA button
+                // ── Assigned admins footer (shown in banner) ──
+                $assignedHtml = '';
+                if ($area === 'admin' && !empty($assignedAdmins)) {
+                    $nameMap = self::adminNames($assignedAdmins);
+                    $chips   = '';
+                    foreach ($assignedAdmins as $aid) {
+                        $name  = $nameMap[$aid] ?? ('Admin #' . $aid);
+                        $chips .= '<span style="display:inline-flex;align-items:center;gap:3px;background:rgba(99,102,241,0.15);color:#4338ca;border-radius:999px;padding:1px 8px;font-size:11px;font-weight:600;margin:1px 2px;">'
+                            . '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>'
+                            . htmlspecialchars($name)
+                            . '</span>';
+                    }
+                    $assignedHtml = '<div style="margin-top:8px;font-size:12px;opacity:0.75;display:flex;align-items:center;flex-wrap:wrap;gap:4px;">'
+                        . '<span style="font-weight:600;margin-right:2px;">Assigned:</span>' . $chips
+                        . '</div>';
+                }
+
+                // ── CTA button ──
                 $btnHtml = '';
                 if (!empty($n['button_enabled']) && !empty($n['button_text']) && !empty($n['button_link'])) {
                     $target  = !empty($n['button_newtab']) ? ' target="_blank" rel="noopener noreferrer"' : '';
@@ -153,7 +215,7 @@ if (!class_exists('NoticeBannerHelper')) {
                         . htmlspecialchars($n['button_text']) . '</a>';
                 }
 
-                // Ticket button (client only)
+                // ── Ticket button (client only) ──
                 $ticketHtml = '';
                 if (!empty($n['ticket_enabled']) && $area === 'client') {
                     $deptId  = urlencode($n['ticket_department_id'] ?? '');
@@ -166,10 +228,9 @@ if (!class_exists('NoticeBannerHelper')) {
                         . $btnTxt . '</a>';
                 }
 
-                // Poll
+                // ── Poll ──
                 $pollHtml = '';
                 if (!empty($n['poll_enabled']) && !empty($n['poll_question']) && !empty($n['poll_options'])) {
-                    $pollId  = 'nb_poll_' . $n['id'];
                     $results = $n['poll_results'] ?? [];
                     $total   = array_sum($results);
                     $pollHtml = '<div style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,0.04);border-radius:8px;max-width:480px;">'
@@ -190,35 +251,43 @@ if (!class_exists('NoticeBannerHelper')) {
                         . '</form></div>';
                 }
 
+                // ── Body ──
                 $bodyHtml = '<div style="margin-top:10px;font-size:14px;line-height:1.7;max-width:800px;margin-left:auto;margin-right:auto;text-align:left;">'
-                    . $content . $btnHtml . $ticketHtml . $pollHtml . '</div>';
+                    . $content . $btnHtml . $ticketHtml . $pollHtml
+                    . $assignedHtml
+                    . '</div>';
+
+                // ── Banner wrapper ──
+                $headerRow = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">'
+                    . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
+                    . self::priorityBadge($priority)
+                    . $tsHtml
+                    . '</div>';
+
+                $dismissBtn = '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" '
+                    . 'style="padding:3px 10px;font-size:16px;line-height:1;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;flex-shrink:0;" title="Dismiss">&times;</button>';
+
+                $bannerStyle = 'background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;'
+                    . 'color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);';
 
                 if (!empty($n['expandable'])) {
-                    $html .= '<div id="' . $id . '" style="background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);">'
+                    $expandBtn = '<button type="button" onclick="(function(b,c){var open=c.style.display!==\'none\';c.style.display=open?\'none\':\'block\';b.textContent=open?\'Expand\':\'Collapse\';})(this,document.getElementById(\'' . $id . '_body\'))" '
+                        . 'style="padding:3px 14px;font-size:13px;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;font-weight:500;">Expand</button>';
+                    $html .= '<div id="' . $id . '" style="' . $bannerStyle . '">'
                         . '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
-                        . '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">'
-                        . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
-                        . self::priorityBadge($priority)
-                        . $tsHtml
+                        . $headerRow
+                        . '<div style="display:flex;gap:8px;align-items:center;">' . $expandBtn . $dismissBtn . '</div>'
                         . '</div>'
-                        . '<div style="display:flex;gap:8px;align-items:center;">'
-                        . '<button type="button" onclick="(function(b,c){var open=c.style.display!==\'none\';c.style.display=open?\'none\':\'block\';b.textContent=open?\'Expand\':\'Collapse\';})(this,document.getElementById(\'' . $id . '_body\'))" style="padding:3px 14px;font-size:13px;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;font-weight:500;">Expand</button>'
-                        . '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" style="padding:3px 10px;font-size:16px;line-height:1;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;" title="Dismiss">&times;</button>'
-                        . '</div></div>'
                         . '<div id="' . $id . '_body" style="display:none;">' . $bodyHtml . '</div>'
                         . '</div>';
                 } else {
-                    $html .= '<div id="' . $id . '" style="background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);">'
+                    $html .= '<div id="' . $id . '" style="' . $bannerStyle . '">'
                         . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
                         . '<div style="flex:1;min-width:0;">'
-                        . '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin-bottom:6px;">'
-                        . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
-                        . self::priorityBadge($priority)
-                        . $tsHtml
-                        . '</div>'
+                        . $headerRow
                         . $bodyHtml
                         . '</div>'
-                        . '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" style="padding:3px 10px;font-size:16px;line-height:1;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;flex-shrink:0;" title="Dismiss">&times;</button>'
+                        . $dismissBtn
                         . '</div>'
                         . '</div>';
                 }

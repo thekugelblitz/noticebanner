@@ -335,38 +335,31 @@ foreach ($admins as $a) {
                 </div>
             </div>
 
-            <!-- Assign / Mention admins -->
+            <!-- Assign admins -->
             <?php if (!empty($admins)): ?>
-            <div style="margin-top:16px;display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div style="margin-top:16px;">
                 <div class="nb-field">
                     <label>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         Assign to Admins
+                        <span style="font-weight:400;color:#94a3b8;font-size:12px;margin-left:6px;">Only assigned admins will see this banner. Leave empty to show to all admins.</span>
                     </label>
-                    <select name="assigned_admins[]" multiple style="height:110px;border-radius:7px;padding:4px;">
-                        <?php foreach ($admins as $a): ?>
-                            <option value="<?php echo (int)$a->id; ?>"
-                                <?php echo in_array($a->id, $edit_notice['assigned_admins'] ?? []) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <small style="color:#94a3b8;">Hold Ctrl/Cmd to select multiple</small>
-                </div>
-                <div class="nb-field">
-                    <label>
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:3px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                        @Mention Admins
-                    </label>
-                    <select name="mentioned_admins[]" multiple style="height:110px;border-radius:7px;padding:4px;">
-                        <?php foreach ($admins as $a): ?>
-                            <option value="<?php echo (int)$a->id; ?>"
-                                <?php echo in_array($a->id, $edit_notice['mentioned_admins'] ?? []) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
-                    <small style="color:#94a3b8;">Also use @username inline in content</small>
+                    <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+                        <select name="assigned_admins[]" multiple id="nb-assigned-select"
+                            style="flex:1;min-width:220px;height:120px;border:1px solid #cbd5e1;border-radius:7px;padding:4px;font-size:14px;">
+                            <?php foreach ($admins as $a): ?>
+                                <option value="<?php echo (int)$a->id; ?>"
+                                    <?php echo in_array($a->id, $edit_notice['assigned_admins'] ?? []) ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' — @' . $a->username); ?>
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
+                        <div style="display:flex;flex-direction:column;gap:6px;padding-top:2px;">
+                            <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-assigned-select option').forEach(o=>o.selected=true)">Select All</button>
+                            <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="document.querySelectorAll('#nb-assigned-select option').forEach(o=>o.selected=false)">Clear</button>
+                        </div>
+                    </div>
+                    <small style="color:#94a3b8;">Hold Ctrl / Cmd to select multiple. You can also use @username inline in the content.</small>
                 </div>
             </div>
             <?php endif; ?>
@@ -409,7 +402,7 @@ foreach ($admins as $a) {
                 <th>Priority</th>
                 <th>Audience</th>
                 <th>Status</th>
-                <th>Created</th>
+                <th>Timestamp</th>
                 <th style="text-align:right;">Actions</th>
             </tr>
         </thead>
@@ -424,11 +417,8 @@ foreach ($admins as $a) {
         <tr class="nb-row-accent" style="border-left-color:<?php echo $accent; ?>;">
             <td>
                 <!-- Title row -->
-                <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;">
+                <div style="margin-bottom:4px;">
                     <span style="font-weight:700;font-size:15px;"><?php echo htmlspecialchars($n['notice_title']); ?></span>
-                    <?php if (!empty($n['notice_timestamp'])): ?>
-                        <span style="font-size:12px;color:#94a3b8;"><?php echo date('M j, Y', strtotime($n['notice_timestamp'])); ?></span>
-                    <?php endif; ?>
                 </div>
 
                 <!-- Content preview (collapsible) -->
@@ -441,8 +431,8 @@ foreach ($admins as $a) {
 
                 <!-- Assigned / Mentioned chips -->
                 <?php if (!empty($n['assigned_admins'])): ?>
-                    <div style="margin-bottom:4px;">
-                        <span style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-right:4px;">Assigned:</span>
+                    <div style="margin-bottom:6px;display:flex;align-items:center;flex-wrap:wrap;gap:3px;">
+                        <span style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-right:2px;">Assigned:</span>
                         <?php foreach ($n['assigned_admins'] as $aid): ?>
                             <span class="nb-chip">
                                 <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -450,13 +440,9 @@ foreach ($admins as $a) {
                             </span>
                         <?php endforeach; ?>
                     </div>
-                <?php endif; ?>
-                <?php if (!empty($n['mentioned_admins'])): ?>
-                    <div style="margin-bottom:4px;">
-                        <span style="font-size:11px;color:#94a3b8;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-right:4px;">Mentions:</span>
-                        <?php foreach ($n['mentioned_admins'] as $aid): ?>
-                            <span class="nb-chip" style="background:#dbeafe;color:#1d4ed8;">@<?php echo htmlspecialchars($adminMap[$aid] ?? 'Admin #' . $aid); ?></span>
-                        <?php endforeach; ?>
+                <?php else: ?>
+                    <div style="margin-bottom:6px;">
+                        <span style="font-size:11px;color:#cbd5e1;font-style:italic;">Visible to all admins</span>
                     </div>
                 <?php endif; ?>
 
@@ -533,8 +519,14 @@ foreach ($admins as $a) {
                 </form>
             </td>
 
-            <td style="font-size:12px;color:#94a3b8;white-space:nowrap;">
-                <?php echo isset($n['created_at']) ? date('M j, Y', strtotime($n['created_at'])) : '—'; ?>
+            <td style="font-size:12px;white-space:nowrap;">
+                <?php if (!empty($n['notice_timestamp'])): ?>
+                    <div style="color:#1e293b;font-weight:600;"><?php echo date('M j, Y', strtotime($n['notice_timestamp'])); ?></div>
+                    <div style="color:#94a3b8;"><?php echo date('g:ia', strtotime($n['notice_timestamp'])); ?></div>
+                <?php else: ?>
+                    <div style="color:#94a3b8;font-style:italic;">Not set</div>
+                    <div style="color:#cbd5e1;font-size:11px;">Created <?php echo isset($n['created_at']) ? date('M j', strtotime($n['created_at'])) : '—'; ?></div>
+                <?php endif; ?>
             </td>
 
             <td style="text-align:right;white-space:nowrap;">

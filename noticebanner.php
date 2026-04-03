@@ -216,10 +216,9 @@ function noticebanner_output($vars) {
 
         // ── Add / Edit ──
         if (isset($_POST['save_notice'])) {
+            // assigned_admins is the single source of truth; mentioned_admins is retired
             $assignedAdmins  = isset($_POST['assigned_admins']) && is_array($_POST['assigned_admins'])
-                ? array_map('intval', $_POST['assigned_admins']) : [];
-            $mentionedAdmins = isset($_POST['mentioned_admins']) && is_array($_POST['mentioned_admins'])
-                ? array_map('intval', $_POST['mentioned_admins']) : [];
+                ? array_values(array_unique(array_map('intval', $_POST['assigned_admins']))) : [];
             $pollOptions = isset($_POST['poll_options']) && is_array($_POST['poll_options'])
                 ? array_values(array_filter(array_map('trim', $_POST['poll_options']), fn($v) => $v !== '')) : [];
 
@@ -248,7 +247,7 @@ function noticebanner_output($vars) {
                 'poll_question'        => $_POST['poll_question'] ?? '',
                 'poll_options'         => json_encode($pollOptions),
                 'assigned_admins'      => json_encode($assignedAdmins),
-                'mentioned_admins'     => json_encode($mentionedAdmins),
+                'mentioned_admins'     => json_encode($assignedAdmins),
                 'priority'             => $_POST['priority'] ?? 'normal',
                 'notice_timestamp'     => $ts,
                 'updated_at'           => date('Y-m-d H:i:s'),
