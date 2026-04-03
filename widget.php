@@ -45,6 +45,9 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
     ];
 
     public function getData() {
+        if (function_exists('noticebanner_ensure_table')) {
+            noticebanner_ensure_table();
+        }
         $notices = [];
         try {
             $rows = Capsule::table('mod_noticebanner')

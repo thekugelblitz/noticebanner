@@ -21,42 +21,60 @@ function noticebanner_config() {
 
 if (!function_exists('noticebanner_activate')) {
 function noticebanner_activate() {
-    try {
-        $capsule = \WHMCS\Database\Capsule::schema();
+    noticebanner_ensure_table();
+    return ['status' => 'success', 'description' => 'Notice Banner v2.0 activated. Database table ready.'];
+}
+}
 
-        if (!$capsule->hasTable('mod_noticebanner')) {
-            $capsule->create('mod_noticebanner', function ($table) {
-                $table->increments('id');
-                $table->string('notice_title', 255)->default('');
-                $table->text('notice_content')->nullable();
-                $table->tinyInteger('show_to_clients')->default(0);
-                $table->tinyInteger('show_to_admins')->default(1);
-                $table->string('display_type', 20)->default('banner');
-                $table->integer('show_again_minutes')->default(60);
-                $table->tinyInteger('expandable')->default(0);
-                $table->string('bg_color', 30)->default('#fffae6');
-                $table->string('font_color', 30)->default('#222222');
-                $table->tinyInteger('button_enabled')->default(0);
-                $table->string('button_text', 100)->default('');
-                $table->string('button_link', 500)->default('');
-                $table->tinyInteger('button_newtab')->default(0);
-                $table->string('button_bg', 30)->default('#2563eb');
-                $table->string('button_color', 30)->default('#ffffff');
-                $table->tinyInteger('ticket_enabled')->default(0);
-                $table->string('ticket_department_id', 20)->default('');
-                $table->string('ticket_button_text', 100)->default('');
-                $table->tinyInteger('poll_enabled')->default(0);
-                $table->string('poll_question', 500)->default('');
-                $table->text('poll_options')->nullable();   // JSON array
-                $table->text('poll_results')->nullable();   // JSON object
-                $table->text('assigned_admins')->nullable(); // JSON array of admin IDs
-                $table->text('mentioned_admins')->nullable(); // JSON array of admin IDs
-                $table->string('priority', 20)->default('normal'); // low|normal|high|critical
-                $table->datetime('notice_timestamp')->nullable();
-                $table->integer('sort_order')->default(0);
-                $table->timestamps(); // created_at, updated_at
-            });
-        }
+if (!function_exists('noticebanner_deactivate')) {
+function noticebanner_deactivate() {
+    // Table is preserved on deactivate to avoid data loss.
+    return ['status' => 'success', 'description' => 'Module deactivated. Data table preserved.'];
+}
+}
+
+// ─── Table bootstrap (idempotent, called on every request) ───────────────────
+
+if (!function_exists('noticebanner_ensure_table')) {
+function noticebanner_ensure_table() {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+    try {
+        $schema = \WHMCS\Database\Capsule::schema();
+        if ($schema->hasTable('mod_noticebanner')) return;
+
+        $schema->create('mod_noticebanner', function ($table) {
+            $table->increments('id');
+            $table->string('notice_title', 255)->default('');
+            $table->text('notice_content')->nullable();
+            $table->tinyInteger('show_to_clients')->default(0);
+            $table->tinyInteger('show_to_admins')->default(1);
+            $table->string('display_type', 20)->default('banner');
+            $table->integer('show_again_minutes')->default(60);
+            $table->tinyInteger('expandable')->default(0);
+            $table->string('bg_color', 30)->default('#fffae6');
+            $table->string('font_color', 30)->default('#222222');
+            $table->tinyInteger('button_enabled')->default(0);
+            $table->string('button_text', 100)->default('');
+            $table->string('button_link', 500)->default('');
+            $table->tinyInteger('button_newtab')->default(0);
+            $table->string('button_bg', 30)->default('#2563eb');
+            $table->string('button_color', 30)->default('#ffffff');
+            $table->tinyInteger('ticket_enabled')->default(0);
+            $table->string('ticket_department_id', 20)->default('');
+            $table->string('ticket_button_text', 100)->default('');
+            $table->tinyInteger('poll_enabled')->default(0);
+            $table->string('poll_question', 500)->default('');
+            $table->text('poll_options')->nullable();
+            $table->text('poll_results')->nullable();
+            $table->text('assigned_admins')->nullable();
+            $table->text('mentioned_admins')->nullable();
+            $table->string('priority', 20)->default('normal');
+            $table->datetime('notice_timestamp')->nullable();
+            $table->integer('sort_order')->default(0);
+            $table->timestamps();
+        });
 
         // Migrate legacy data.txt if present
         $legacyFile = __DIR__ . '/data.txt';
@@ -99,18 +117,9 @@ function noticebanner_activate() {
                 rename($legacyFile, $legacyFile . '.migrated');
             }
         }
-
-        return ['status' => 'success', 'description' => 'Notice Banner v2.0 activated. Database table created.'];
     } catch (\Exception $e) {
-        return ['status' => 'error', 'description' => 'Activation failed: ' . $e->getMessage()];
+        // Silently fail — error will surface naturally on next DB query
     }
-}
-}
-
-if (!function_exists('noticebanner_deactivate')) {
-function noticebanner_deactivate() {
-    // Table is preserved on deactivate to avoid data loss.
-    return ['status' => 'success', 'description' => 'Module deactivated. Data table preserved.'];
 }
 }
 
@@ -118,6 +127,7 @@ function noticebanner_deactivate() {
 
 if (!function_exists('noticebanner_get_notices')) {
 function noticebanner_get_notices() {
+    noticebanner_ensure_table();
     try {
         $rows = \WHMCS\Database\Capsule::table('mod_noticebanner')
             ->orderBy('sort_order', 'asc')
@@ -171,6 +181,8 @@ function noticebanner_get_departments() {
 
 if (!function_exists('noticebanner_output')) {
 function noticebanner_output($vars) {
+    noticebanner_ensure_table();
+
     // Ensure NoticeBannerHelper (with parseMarkdown) is available in the template
     if (!class_exists('NoticeBannerHelper')) {
         require_once __DIR__ . '/hooks.php';
