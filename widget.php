@@ -141,9 +141,22 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
 
         ob_start(); ?>
 <style>
+/* ── Force WHMCS widget container to grow with content ── */
+.widget-noticebanner .widget-content-padded,
+.widget-noticebanner .widget-body,
+.widget-noticebanner .panel-body,
+.widget-noticebanner > div,
+.widget-noticebanner .sortable-widget,
+[data-widget-id="noticebanner"] .widget-body,
+[data-widget-id="noticebanner"] .panel-body {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+}
+
 /* ── Notice Banner Widget ── */
 #nb-widget-wrap,#nb-widget-wrap *{box-sizing:border-box;}
-#nb-widget-wrap{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#1e293b;width:100%;min-width:0;}
+#nb-widget-wrap{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#1e293b;width:100%;min-width:0;overflow:visible;}
 
 /* Stats row */
 .nbw-stats{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
@@ -345,8 +358,8 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
 
     <!-- Quick Add -->
     <div style="border-top:1px solid #e2e8f0;margin-top:12px;padding-top:8px;">
-        <div class="nbw-section" id="nbw-qaform-lbl" onclick="nbwToggle('nbw-qaform','nbw-qaform-lbl')">Quick Add Notice</div>
-        <div id="nbw-qaform" style="display:none;margin-top:8px;">
+        <div class="nbw-section open" id="nbw-qaform-lbl" onclick="nbwToggle('nbw-qaform','nbw-qaform-lbl')">Quick Add Notice</div>
+        <div id="nbw-qaform" style="display:block;margin-top:8px;">
             <form method="post">
                 <input type="hidden" name="nb_widget_action" value="add">
                 <div class="nbw-form-row">
@@ -391,15 +404,37 @@ function nbwToggle(id, lblId) {
     var open = el.style.display !== 'none';
     el.style.display = open ? 'none' : 'block';
     if (lbl) { open ? lbl.classList.remove('open') : lbl.classList.add('open'); }
+    nbwUnclip();
 }
 function nbwExpand(id) {
     document.getElementById(id+'-short').style.display = 'none';
     document.getElementById(id+'-full').style.display  = 'block';
+    nbwUnclip();
 }
 function nbwCollapse(id) {
     document.getElementById(id+'-full').style.display  = 'none';
     document.getElementById(id+'-short').style.display = 'block';
 }
+// Walk up the DOM from our widget and remove any overflow/height constraints
+// imposed by the WHMCS theme on widget containers.
+function nbwUnclip() {
+    var el = document.getElementById('nb-widget-wrap');
+    if (!el) return;
+    var node = el.parentNode;
+    var depth = 0;
+    while (node && node !== document.body && depth < 8) {
+        node.style.overflow  = 'visible';
+        node.style.height    = 'auto';
+        node.style.maxHeight = 'none';
+        node = node.parentNode;
+        depth++;
+    }
+}
+// Run on page load too
+document.addEventListener('DOMContentLoaded', nbwUnclip);
+// Also run after a short delay in case WHMCS JS sets height after load
+setTimeout(nbwUnclip, 300);
+setTimeout(nbwUnclip, 800);
 </script>
         <?php
         return ob_get_clean();
