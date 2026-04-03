@@ -141,42 +141,62 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
 
         ob_start(); ?>
 <style>
-.nbw *{box-sizing:border-box;}
-.nbw{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#1e293b;}
-.nbw-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:8px;}
-.nbw-card-head{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-bottom:1px solid #f1f5f9;gap:8px;flex-wrap:wrap;}
-.nbw-card-body{padding:10px 12px;}
-.nbw-title{font-weight:700;font-size:13px;color:#0f172a;flex:1;min-width:0;}
-.nbw-preview{font-size:12px;color:#475569;line-height:1.5;margin-top:4px;white-space:pre-wrap;word-break:break-word;}
-.nbw-meta{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:5px;}
-.nbw-badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;}
-.nbw-chip{display:inline-flex;align-items:center;gap:2px;background:#ede9fe;color:#5b21b6;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:600;}
-.nbw-ts{font-size:11px;color:#94a3b8;}
-.nbw-actions{display:flex;gap:4px;flex-shrink:0;align-items:center;}
-.nbw-btn{display:inline-flex;align-items:center;gap:3px;padding:3px 8px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;text-decoration:none;line-height:1.4;white-space:nowrap;}
-.nbw-toggle{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;border:none;}
+/* ── Notice Banner Widget ── */
+#nb-widget-wrap,#nb-widget-wrap *{box-sizing:border-box;}
+#nb-widget-wrap{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:13px;color:#1e293b;width:100%;min-width:0;}
+
+/* Stats row */
+.nbw-stats{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;}
+.nbw-stat{flex:1 1 80px;border-radius:8px;padding:8px 10px;text-align:center;}
+.nbw-stat-num{font-size:22px;font-weight:800;line-height:1;}
+.nbw-stat-lbl{font-size:10px;font-weight:700;margin-top:2px;text-transform:uppercase;letter-spacing:0.05em;}
+
+/* Notice card */
+.nbw-card{background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;margin-bottom:8px;border-left-width:3px;}
+.nbw-card-head{display:flex;align-items:flex-start;justify-content:space-between;padding:9px 12px;gap:8px;flex-wrap:wrap;}
+.nbw-card-body{padding:0 12px 10px 12px;}
+
+/* Title + meta */
+.nbw-title-row{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px;}
+.nbw-title{font-weight:700;font-size:13px;color:#0f172a;word-break:break-word;}
+.nbw-badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:700;white-space:nowrap;}
+.nbw-meta{display:flex;align-items:center;flex-wrap:wrap;gap:5px;}
+.nbw-chip{display:inline-flex;align-items:center;gap:2px;background:#ede9fe;color:#5b21b6;border-radius:999px;padding:1px 7px;font-size:11px;font-weight:600;white-space:nowrap;}
+.nbw-ts{font-size:11px;color:#94a3b8;white-space:nowrap;}
+
+/* Audience toggles */
+.nbw-toggle{display:inline-flex;align-items:center;gap:3px;padding:2px 8px;border-radius:5px;font-size:11px;font-weight:700;cursor:pointer;border:none;white-space:nowrap;}
 .nbw-toggle-on {background:#dcfce7;color:#166534;}
 .nbw-toggle-off{background:#f1f5f9;color:#94a3b8;}
+
+/* Action buttons */
+.nbw-actions{display:flex;gap:4px;flex-shrink:0;align-items:flex-start;flex-wrap:wrap;}
+.nbw-btn{display:inline-flex;align-items:center;gap:3px;padding:4px 10px;border-radius:5px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid transparent;text-decoration:none;line-height:1.4;white-space:nowrap;}
+
+/* Content preview */
+.nbw-preview{font-size:12px;color:#475569;line-height:1.6;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;}
+.nbw-expand-btn{font-size:11px;color:#6366f1;cursor:pointer;background:none;border:none;padding:0 0 0 4px;font-weight:600;text-decoration:underline;text-underline-offset:2px;vertical-align:baseline;}
+
+/* Section headers (collapsible) */
 .nbw-section{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#94a3b8;margin:10px 0 5px 0;display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none;}
 .nbw-section::before{content:'▶';font-size:8px;transition:transform .2s;display:inline-block;}
 .nbw-section.open::before{transform:rotate(90deg);}
+
+/* Quick-add form */
 .nbw-form-row{display:flex;flex-direction:column;gap:4px;margin-bottom:8px;}
 .nbw-form-row label{font-size:12px;font-weight:600;color:#475569;}
-.nbw-form-row input[type=text],.nbw-form-row textarea,.nbw-form-row select{width:100%;padding:6px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#1e293b;background:#fff;}
+.nbw-form-row input[type=text],
+.nbw-form-row textarea,
+.nbw-form-row select{width:100%;padding:6px 9px;border:1px solid #cbd5e1;border-radius:6px;font-size:13px;color:#1e293b;background:#fff;min-width:0;}
 .nbw-form-row textarea{resize:vertical;min-height:70px;font-family:inherit;}
 .nbw-check-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
 .nbw-check-row label{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:500;cursor:pointer;}
-.nbw-expand-btn{font-size:11px;color:#6366f1;cursor:pointer;background:none;border:none;padding:0;font-weight:600;text-decoration:underline;text-underline-offset:2px;}
-.nbw-left-bar{width:3px;border-radius:2px;flex-shrink:0;align-self:stretch;min-height:32px;}
-.nbw-stat{flex:1;min-width:70px;border-radius:8px;padding:8px 10px;text-align:center;}
-.nbw-stat-num{font-size:20px;font-weight:800;line-height:1;}
-.nbw-stat-lbl{font-size:10px;font-weight:600;margin-top:2px;text-transform:uppercase;letter-spacing:0.05em;}
 </style>
 
-<div class="nbw">
+<div id="nb-widget-wrap">
 
     <!-- Stats -->
-    <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <div class="nbw-stats">
         <div class="nbw-stat" style="background:#f0fdf4;border:1px solid #bbf7d0;">
             <div class="nbw-stat-num" style="color:#166534;"><?php echo count($active); ?></div>
             <div class="nbw-stat-lbl" style="color:#166534;">Active</div>
@@ -195,68 +215,61 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
     <?php if (!empty($active)): ?>
         <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.07em;color:#94a3b8;margin-bottom:6px;">Active Notices</div>
         <?php foreach ($active as $n):
-            $priority = $n['priority'] ?? 'normal';
-            [$accentColor, $bgColor] = self::$priorityColors[$priority] ?? self::$priorityColors['normal'];
+            $priority       = $n['priority'] ?? 'normal';
+            [$ac, $bgc]     = self::$priorityColors[$priority] ?? self::$priorityColors['normal'];
             $assignedAdmins = $n['assigned_admins'] ?? [];
-            $nameMap  = $this->adminNames($assignedAdmins);
-            $rowId    = 'nbw-n-' . $n['id'];
-            $bodyId   = 'nbw-b-' . $n['id'];
-            $hasTs    = !empty($n['notice_timestamp']);
-            $preview  = mb_strimwidth(strip_tags($n['notice_content'] ?? ''), 0, 120, '…');
-            $fullContent = $n['notice_content'] ?? '';
+            $nameMap        = $this->adminNames($assignedAdmins);
+            $bodyId         = 'nbw-b-' . $n['id'];
+            $fullContent    = $n['notice_content'] ?? '';
+            $stripped       = strip_tags($fullContent);
+            $preview        = mb_strimwidth($stripped, 0, 140, '…');
+            $needsExpand    = mb_strlen($stripped) > 140;
+            $hasTs          = !empty($n['notice_timestamp']);
         ?>
-        <div class="nbw-card" style="border-left:3px solid <?php echo $accentColor; ?>;">
+        <div class="nbw-card" style="border-left-color:<?php echo $ac; ?>;">
             <div class="nbw-card-head">
-                <!-- Left: title + meta -->
                 <div style="flex:1;min-width:0;">
-                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                    <div class="nbw-title-row">
                         <span class="nbw-title"><?php echo htmlspecialchars($n['notice_title']); ?></span>
-                        <span class="nbw-badge" style="background:<?php echo $bgColor; ?>;color:<?php echo $accentColor; ?>;"><?php echo ucfirst($priority); ?></span>
+                        <span class="nbw-badge" style="background:<?php echo $bgc; ?>;color:<?php echo $ac; ?>;"><?php echo ucfirst($priority); ?></span>
                     </div>
                     <div class="nbw-meta">
-                        <!-- Admins toggle -->
-                        <form method="post" style="display:inline;">
+                        <form method="post" style="display:contents;">
                             <input type="hidden" name="nb_widget_action" value="toggle_admins">
                             <input type="hidden" name="nb_id" value="<?php echo (int)$n['id']; ?>">
-                            <button type="submit" class="nbw-toggle <?php echo !empty($n['show_to_admins']) ? 'nbw-toggle-on' : 'nbw-toggle-off'; ?>" title="Toggle admin visibility">
+                            <button type="submit" class="nbw-toggle <?php echo !empty($n['show_to_admins']) ? 'nbw-toggle-on' : 'nbw-toggle-off'; ?>">
                                 👤 <?php echo !empty($n['show_to_admins']) ? 'Admins ✓' : 'Admins ✗'; ?>
                             </button>
                         </form>
-                        <!-- Clients toggle -->
-                        <form method="post" style="display:inline;">
+                        <form method="post" style="display:contents;">
                             <input type="hidden" name="nb_widget_action" value="toggle_clients">
                             <input type="hidden" name="nb_id" value="<?php echo (int)$n['id']; ?>">
-                            <button type="submit" class="nbw-toggle <?php echo !empty($n['show_to_clients']) ? 'nbw-toggle-on' : 'nbw-toggle-off'; ?>" title="Toggle client visibility">
+                            <button type="submit" class="nbw-toggle <?php echo !empty($n['show_to_clients']) ? 'nbw-toggle-on' : 'nbw-toggle-off'; ?>">
                                 🌐 <?php echo !empty($n['show_to_clients']) ? 'Clients ✓' : 'Clients ✗'; ?>
                             </button>
                         </form>
-                        <?php if (!empty($assignedAdmins)): ?>
-                            <?php foreach ($assignedAdmins as $aid): ?>
-                                <span class="nbw-chip">📌 <?php echo htmlspecialchars($nameMap[$aid] ?? 'Admin #'.$aid); ?></span>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
+                        <?php foreach ($assignedAdmins as $aid): ?>
+                            <span class="nbw-chip">📌 <?php echo htmlspecialchars($nameMap[$aid] ?? 'Admin #'.$aid); ?></span>
+                        <?php endforeach; ?>
                         <?php if ($hasTs): ?>
                             <span class="nbw-ts">🕐 <?php echo date('M j, Y g:ia', strtotime($n['notice_timestamp'])); ?></span>
                         <?php endif; ?>
                     </div>
                 </div>
-                <!-- Right: action buttons -->
                 <div class="nbw-actions">
-                    <a href="<?php echo $addonUrl; ?>" class="nbw-btn" style="background:#ede9fe;color:#5b21b6;border-color:#ddd6fe;" title="Edit in full editor">✏️ Edit</a>
-                    <form method="post" style="display:inline;" onsubmit="return confirm('Delete this notice?');">
+                    <a href="<?php echo $addonUrl; ?>" class="nbw-btn" style="background:#ede9fe;color:#5b21b6;border-color:#ddd6fe;">✏️ Edit</a>
+                    <form method="post" style="display:contents;" onsubmit="return confirm('Delete this notice?');">
                         <input type="hidden" name="nb_widget_action" value="delete">
                         <input type="hidden" name="nb_id" value="<?php echo (int)$n['id']; ?>">
-                        <button type="submit" class="nbw-btn" style="background:#fee2e2;color:#991b1b;border-color:#fecaca;" title="Delete">🗑</button>
+                        <button type="submit" class="nbw-btn" style="background:#fee2e2;color:#991b1b;border-color:#fecaca;">🗑</button>
                     </form>
                 </div>
             </div>
-
-            <!-- Content preview -->
             <?php if (!empty(trim($fullContent))): ?>
-            <div class="nbw-card-body" style="padding-top:8px;padding-bottom:8px;">
-                <div id="<?php echo $bodyId; ?>-short" class="nbw-preview"><?php echo htmlspecialchars($preview); ?><?php if (mb_strlen(strip_tags($fullContent)) > 120): ?> <button class="nbw-expand-btn" onclick="nbwExpand('<?php echo $bodyId; ?>')">Show more</button><?php endif; ?></div>
-                <?php if (mb_strlen(strip_tags($fullContent)) > 120): ?>
-                <div id="<?php echo $bodyId; ?>-full" class="nbw-preview" style="display:none;"><?php echo htmlspecialchars($fullContent); ?> <button class="nbw-expand-btn" onclick="nbwCollapse('<?php echo $bodyId; ?>')">Show less</button></div>
+            <div class="nbw-card-body">
+                <div id="<?php echo $bodyId; ?>-short" class="nbw-preview"><?php echo htmlspecialchars($preview); ?><?php if ($needsExpand): ?><button class="nbw-expand-btn" onclick="nbwExpand('<?php echo $bodyId; ?>')">Show more</button><?php endif; ?></div>
+                <?php if ($needsExpand): ?>
+                <div id="<?php echo $bodyId; ?>-full" class="nbw-preview" style="display:none;"><?php echo htmlspecialchars($fullContent); ?><button class="nbw-expand-btn" onclick="nbwCollapse('<?php echo $bodyId; ?>')"> Show less</button></div>
                 <?php endif; ?>
             </div>
             <?php endif; ?>
@@ -268,45 +281,41 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
 
     <!-- Inactive notices -->
     <?php if (!empty($inactive)): ?>
-        <div class="nbw-section" id="nbw-inactive-lbl" onclick="nbwToggle('nbw-inactive','nbw-inactive-lbl')">
-            Inactive (<?php echo count($inactive); ?>)
-        </div>
+        <div class="nbw-section" id="nbw-inactive-lbl" onclick="nbwToggle('nbw-inactive','nbw-inactive-lbl')">Inactive (<?php echo count($inactive); ?>)</div>
         <div id="nbw-inactive" style="display:none;">
             <?php foreach ($inactive as $n):
-                $priority = $n['priority'] ?? 'normal';
-                [$accentColor, $bgColor] = self::$priorityColors[$priority] ?? self::$priorityColors['normal'];
+                $priority       = $n['priority'] ?? 'normal';
+                [$ac, $bgc]     = self::$priorityColors[$priority] ?? self::$priorityColors['normal'];
                 $assignedAdmins = $n['assigned_admins'] ?? [];
-                $nameMap  = $this->adminNames($assignedAdmins);
-                $hasTs    = !empty($n['notice_timestamp']);
-                $preview  = mb_strimwidth(strip_tags($n['notice_content'] ?? ''), 0, 100, '…');
-                $bodyId   = 'nbw-ib-' . $n['id'];
-                $fullContent = $n['notice_content'] ?? '';
+                $nameMap        = $this->adminNames($assignedAdmins);
+                $bodyId         = 'nbw-ib-' . $n['id'];
+                $fullContent    = $n['notice_content'] ?? '';
+                $stripped       = strip_tags($fullContent);
+                $preview        = mb_strimwidth($stripped, 0, 140, '…');
+                $needsExpand    = mb_strlen($stripped) > 140;
+                $hasTs          = !empty($n['notice_timestamp']);
             ?>
-            <div class="nbw-card" style="border-left:3px solid #cbd5e1;opacity:0.8;">
+            <div class="nbw-card" style="border-left-color:#cbd5e1;opacity:0.85;">
                 <div class="nbw-card-head">
                     <div style="flex:1;min-width:0;">
-                        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                        <div class="nbw-title-row">
                             <span class="nbw-title"><?php echo htmlspecialchars($n['notice_title']); ?></span>
-                            <span class="nbw-badge" style="background:<?php echo $bgColor; ?>;color:<?php echo $accentColor; ?>;"><?php echo ucfirst($priority); ?></span>
+                            <span class="nbw-badge" style="background:<?php echo $bgc; ?>;color:<?php echo $ac; ?>;"><?php echo ucfirst($priority); ?></span>
                         </div>
                         <div class="nbw-meta">
-                            <!-- Admins toggle -->
-                            <form method="post" style="display:inline;">
+                            <form method="post" style="display:contents;">
                                 <input type="hidden" name="nb_widget_action" value="toggle_admins">
                                 <input type="hidden" name="nb_id" value="<?php echo (int)$n['id']; ?>">
-                                <button type="submit" class="nbw-toggle nbw-toggle-off" title="Enable for admins">👤 Admins ✗</button>
+                                <button type="submit" class="nbw-toggle nbw-toggle-off">👤 Admins ✗</button>
                             </form>
-                            <!-- Clients toggle -->
-                            <form method="post" style="display:inline;">
+                            <form method="post" style="display:contents;">
                                 <input type="hidden" name="nb_widget_action" value="toggle_clients">
                                 <input type="hidden" name="nb_id" value="<?php echo (int)$n['id']; ?>">
-                                <button type="submit" class="nbw-toggle nbw-toggle-off" title="Enable for clients">🌐 Clients ✗</button>
+                                <button type="submit" class="nbw-toggle nbw-toggle-off">🌐 Clients ✗</button>
                             </form>
-                            <?php if (!empty($assignedAdmins)): ?>
-                                <?php foreach ($assignedAdmins as $aid): ?>
-                                    <span class="nbw-chip">📌 <?php echo htmlspecialchars($nameMap[$aid] ?? 'Admin #'.$aid); ?></span>
-                                <?php endforeach; ?>
-                            <?php endif; ?>
+                            <?php foreach ($assignedAdmins as $aid): ?>
+                                <span class="nbw-chip">📌 <?php echo htmlspecialchars($nameMap[$aid] ?? 'Admin #'.$aid); ?></span>
+                            <?php endforeach; ?>
                             <?php if ($hasTs): ?>
                                 <span class="nbw-ts">🕐 <?php echo date('M j, Y g:ia', strtotime($n['notice_timestamp'])); ?></span>
                             <?php endif; ?>
@@ -314,7 +323,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
                     </div>
                     <div class="nbw-actions">
                         <a href="<?php echo $addonUrl; ?>" class="nbw-btn" style="background:#ede9fe;color:#5b21b6;border-color:#ddd6fe;">✏️ Edit</a>
-                        <form method="post" style="display:inline;" onsubmit="return confirm('Delete this notice?');">
+                        <form method="post" style="display:contents;" onsubmit="return confirm('Delete this notice?');">
                             <input type="hidden" name="nb_widget_action" value="delete">
                             <input type="hidden" name="nb_id" value="<?php echo (int)$n['id']; ?>">
                             <button type="submit" class="nbw-btn" style="background:#fee2e2;color:#991b1b;border-color:#fecaca;">🗑</button>
@@ -322,10 +331,10 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
                     </div>
                 </div>
                 <?php if (!empty(trim($fullContent))): ?>
-                <div class="nbw-card-body" style="padding-top:6px;padding-bottom:6px;">
-                    <div id="<?php echo $bodyId; ?>-short" class="nbw-preview"><?php echo htmlspecialchars($preview); ?><?php if (mb_strlen(strip_tags($fullContent)) > 100): ?> <button class="nbw-expand-btn" onclick="nbwExpand('<?php echo $bodyId; ?>')">Show more</button><?php endif; ?></div>
-                    <?php if (mb_strlen(strip_tags($fullContent)) > 100): ?>
-                    <div id="<?php echo $bodyId; ?>-full" class="nbw-preview" style="display:none;"><?php echo htmlspecialchars($fullContent); ?> <button class="nbw-expand-btn" onclick="nbwCollapse('<?php echo $bodyId; ?>')">Show less</button></div>
+                <div class="nbw-card-body">
+                    <div id="<?php echo $bodyId; ?>-short" class="nbw-preview"><?php echo htmlspecialchars($preview); ?><?php if ($needsExpand): ?><button class="nbw-expand-btn" onclick="nbwExpand('<?php echo $bodyId; ?>')">Show more</button><?php endif; ?></div>
+                    <?php if ($needsExpand): ?>
+                    <div id="<?php echo $bodyId; ?>-full" class="nbw-preview" style="display:none;"><?php echo htmlspecialchars($fullContent); ?><button class="nbw-expand-btn" onclick="nbwCollapse('<?php echo $bodyId; ?>')"> Show less</button></div>
                     <?php endif; ?>
                 </div>
                 <?php endif; ?>
@@ -335,11 +344,9 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
     <?php endif; ?>
 
     <!-- Quick Add -->
-    <div style="border-top:1px solid #e2e8f0;margin-top:10px;padding-top:6px;">
-        <div class="nbw-section" id="nbw-qaform-lbl" onclick="nbwToggle('nbw-qaform','nbw-qaform-lbl')">
-            Quick Add Notice
-        </div>
-        <div id="nbw-qaform" style="display:none;margin-top:6px;">
+    <div style="border-top:1px solid #e2e8f0;margin-top:12px;padding-top:8px;">
+        <div class="nbw-section" id="nbw-qaform-lbl" onclick="nbwToggle('nbw-qaform','nbw-qaform-lbl')">Quick Add Notice</div>
+        <div id="nbw-qaform" style="display:none;margin-top:8px;">
             <form method="post">
                 <input type="hidden" name="nb_widget_action" value="add">
                 <div class="nbw-form-row">
@@ -362,23 +369,14 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
                 <div class="nbw-form-row">
                     <label>Show To</label>
                     <div class="nbw-check-row">
-                        <label>
-                            <input type="checkbox" name="nb_show_admins" value="1" checked>
-                            👤 Admins
-                        </label>
-                        <label>
-                            <input type="checkbox" name="nb_show_clients" value="1">
-                            🌐 Clients
-                        </label>
-                        <label>
-                            <input type="checkbox" name="nb_expandable" value="1">
-                            Expandable
-                        </label>
+                        <label><input type="checkbox" name="nb_show_admins" value="1" checked> 👤 Admins</label>
+                        <label><input type="checkbox" name="nb_show_clients" value="1"> 🌐 Clients</label>
+                        <label><input type="checkbox" name="nb_expandable" value="1"> Expandable</label>
                     </div>
                 </div>
-                <div style="display:flex;gap:8px;align-items:center;margin-top:4px;">
-                    <button type="submit" class="nbw-btn" style="background:#6366f1;color:#fff;border-color:#6366f1;padding:5px 14px;">Add Notice</button>
-                    <a href="<?php echo $addonUrl; ?>" class="nbw-btn" style="background:#f1f5f9;color:#475569;border-color:#e2e8f0;padding:5px 14px;">Full Editor →</a>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;">
+                    <button type="submit" class="nbw-btn" style="background:#6366f1;color:#fff;border-color:#6366f1;">Add Notice</button>
+                    <a href="<?php echo $addonUrl; ?>" class="nbw-btn" style="background:#f1f5f9;color:#475569;border-color:#e2e8f0;">Full Editor →</a>
                 </div>
             </form>
         </div>
