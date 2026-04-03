@@ -896,16 +896,108 @@ $now = date('Y-m-d H:i:s');
                 <?php if ($isSched): ?><div class="nb-badge nb-badge-scheduled" style="margin-top:3px;">Scheduled</div><?php endif; ?>
             </td>
 
-            <td style="font-size:12px;white-space:nowrap;">
-                <?php if ($readCounts['admins'] > 0): ?>
-                    <div class="nb-read-count">👤 <?php echo $readCounts['admins']; ?> admin<?php echo $readCounts['admins'] == 1 ? '' : 's'; ?></div>
-                <?php endif; ?>
-                <?php if ($readCounts['clients'] > 0): ?>
-                    <div class="nb-read-count">🌐 <?php echo $readCounts['clients']; ?> client<?php echo $readCounts['clients'] == 1 ? '' : 's'; ?></div>
-                <?php endif; ?>
-                <?php if ($readCounts['admins'] === 0 && $readCounts['clients'] === 0): ?>
-                    <span style="color:#cbd5e1;font-style:italic;font-size:11px;">None yet</span>
-                <?php endif; ?>
+            <td style="font-size:12px;min-width:130px;">
+                <?php
+                $totalAcks = $readCounts['admins'] + $readCounts['clients'];
+                $ackPanelId = 'nb-acks-' . $n['id'];
+                ?>
+                <!-- Summary badges (click to expand) -->
+                <div style="display:flex;flex-wrap:wrap;gap:3px;cursor:pointer;" onclick="nbToggleRow('<?php echo $ackPanelId; ?>',null)">
+                    <?php if ($readCounts['admins'] > 0): ?>
+                        <span class="nb-read-count" title="Click to manage">👤 <?php echo $readCounts['admins']; ?> admin<?php echo $readCounts['admins'] == 1 ? '' : 's'; ?></span>
+                    <?php endif; ?>
+                    <?php if ($readCounts['clients'] > 0): ?>
+                        <span class="nb-read-count" title="Click to manage">🌐 <?php echo $readCounts['clients']; ?> client<?php echo $readCounts['clients'] == 1 ? '' : 's'; ?></span>
+                    <?php endif; ?>
+                    <?php if ($totalAcks === 0): ?>
+                        <span style="color:#cbd5e1;font-style:italic;font-size:11px;">None yet</span>
+                    <?php endif; ?>
+                    <span style="font-size:10px;color:#94a3b8;margin-top:1px;" title="Manage acknowledgements">⚙</span>
+                </div>
+
+                <!-- Acknowledgement management panel -->
+                <div id="<?php echo $ackPanelId; ?>" style="display:none;margin-top:8px;padding:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;min-width:240px;max-width:340px;">
+                    <?php
+                    $ackDetails = noticebanner_get_read_details((int)$n['id']);
+                    $ackAdmins  = array_filter($ackDetails, fn($r) => $r['entity_type'] === 'admin');
+                    $ackClients = array_filter($ackDetails, fn($r) => $r['entity_type'] === 'client');
+                    ?>
+
+                    <?php if (!empty($ackAdmins)): ?>
+                        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:4px;">👤 Admins</div>
+                        <?php foreach ($ackAdmins as $ar): ?>
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3px 0;border-bottom:1px solid #f1f5f9;">
+                            <div>
+                                <div style="font-size:12px;font-weight:600;color:#1e293b;"><?php echo htmlspecialchars($ar['name']); ?></div>
+                                <div style="font-size:10px;color:#94a3b8;"><?php echo date('M j g:ia', strtotime($ar['read_at'])); ?></div>
+                            </div>
+                            <form method="post" style="display:inline;" onsubmit="return confirm('Remove this acknowledgement?');">
+                                <input type="hidden" name="remove_ack" value="1">
+                                <input type="hidden" name="remove_ack_id" value="<?php echo (int)$n['id']; ?>">
+                                <input type="hidden" name="remove_ack_type" value="admin">
+                                <input type="hidden" name="remove_ack_entity" value="<?php echo (int)$ar['entity_id']; ?>">
+                                <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="color:#ef4444;padding:2px 7px;font-size:11px;" title="Remove">✕</button>
+                            </form>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+
+                    <?php if (!empty($ackClients)): ?>
+                        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin:8px 0 4px;">🌐 Clients</div>
+                        <?php foreach ($ackClients as $cr): ?>
+                        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;padding:3px 0;border-bottom:1px solid #f1f5f9;">
+                            <div>
+                                <div style="font-size:12px;font-weight:600;color:#1e293b;"><?php echo htmlspecialchars($cr['name']); ?></div>
+                                <div style="font-size:10px;color:#94a3b8;"><?php echo date('M j g:ia', strtotime($cr['read_at'])); ?></div>
+                            </div>
+                            <form method="post" style="display:inline;" onsubmit="return confirm('Remove this acknowledgement?');">
+                                <input type="hidden" name="remove_ack" value="1">
+                                <input type="hidden" name="remove_ack_id" value="<?php echo (int)$n['id']; ?>">
+                                <input type="hidden" name="remove_ack_type" value="client">
+                                <input type="hidden" name="remove_ack_entity" value="<?php echo (int)$cr['entity_id']; ?>">
+                                <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="color:#ef4444;padding:2px 7px;font-size:11px;" title="Remove">✕</button>
+                            </form>
+                        </div>
+                        <?php endforeach; ?>
+                    <?php endif; ?>
+
+                    <?php if (empty($ackDetails)): ?>
+                        <div style="font-size:12px;color:#94a3b8;text-align:center;padding:6px 0;">No acknowledgements yet.</div>
+                    <?php endif; ?>
+
+                    <!-- Add fake acknowledgement -->
+                    <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;">
+                        <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">+ Add Acknowledgement</div>
+                        <form method="post">
+                            <input type="hidden" name="add_fake_ack" value="1">
+                            <input type="hidden" name="fake_ack_notice_id" value="<?php echo (int)$n['id']; ?>">
+                            <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
+                                <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+                                    <input type="radio" name="fake_ack_type" value="admin" checked onchange="nbToggleFakeAckList(<?php echo (int)$n['id']; ?>,this.value)"> 👤 Admin
+                                </label>
+                                <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
+                                    <input type="radio" name="fake_ack_type" value="client" onchange="nbToggleFakeAckList(<?php echo (int)$n['id']; ?>,this.value)"> 🌐 Client
+                                </label>
+                            </div>
+                            <!-- Admin list -->
+                            <div id="nb-fake-admin-<?php echo (int)$n['id']; ?>">
+                                <select name="fake_ack_entities[]" multiple style="width:100%;height:80px;border:1px solid #cbd5e1;border-radius:6px;padding:3px;font-size:12px;">
+                                    <?php foreach ($admins as $a): ?>
+                                        <option value="<?php echo (int)$a->id; ?>"><?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                            </div>
+                            <!-- Client search (lazy) -->
+                            <div id="nb-fake-client-<?php echo (int)$n['id']; ?>" style="display:none;">
+                                <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">Search and select clients below:</div>
+                                <input type="text" placeholder="Search clients…" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;margin-bottom:4px;"
+                                    oninput="nbFakeClientSearch(this,<?php echo (int)$n['id']; ?>)">
+                                <select id="nb-fake-client-sel-<?php echo (int)$n['id']; ?>" name="fake_ack_entities[]" multiple style="width:100%;height:80px;border:1px solid #cbd5e1;border-radius:6px;padding:3px;font-size:12px;display:none;"></select>
+                            </div>
+                            <button type="submit" class="nb-btn nb-btn-success nb-btn-sm" style="margin-top:6px;width:100%;">Add</button>
+                        </form>
+                    </div>
+                </div>
             </td>
 
             <td style="font-size:12px;white-space:nowrap;">
@@ -1085,9 +1177,10 @@ function nbToggle(id, checkbox) {
 }
 function nbToggleRow(id, btn) {
     var el   = document.getElementById(id);
+    if (!el) return;
     var open = el.style.display !== 'none';
     el.style.display = open ? 'none' : 'block';
-    btn.textContent  = open ? (btn.dataset.closed || 'Show') : (btn.dataset.open || 'Hide');
+    if (btn) btn.textContent = open ? (btn.dataset.closed || 'Show') : (btn.dataset.open || 'Hide');
 }
 function nbToggleSection(bodyId, toggleId) {
     var body   = document.getElementById(bodyId);
@@ -1270,5 +1363,34 @@ function nbAddClient(id, text) {
 function nbRemoveClient(id) {
     var chip = document.getElementById('nb-client-chip-' + id);
     if (chip) chip.remove();
+}
+
+// ── Fake acknowledgement panel helpers ───────────────────────────────────────
+function nbToggleFakeAckList(noticeId, type) {
+    document.getElementById('nb-fake-admin-'  + noticeId).style.display = type === 'admin'  ? 'block' : 'none';
+    document.getElementById('nb-fake-client-' + noticeId).style.display = type === 'client' ? 'block' : 'none';
+}
+var nbFakeClientTimers = {};
+function nbFakeClientSearch(inp, noticeId) {
+    clearTimeout(nbFakeClientTimers[noticeId]);
+    var val = inp.value;
+    var sel = document.getElementById('nb-fake-client-sel-' + noticeId);
+    if (val.length < 2) { sel.style.display = 'none'; return; }
+    nbFakeClientTimers[noticeId] = setTimeout(function() {
+        var fd = new FormData();
+        fd.append('nb_client_search', val);
+        fetch(window.location.href, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                sel.innerHTML = '';
+                data.forEach(function(c) {
+                    var opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.text;
+                    sel.appendChild(opt);
+                });
+                sel.style.display = data.length ? 'block' : 'none';
+            });
+    }, 300);
 }
 </script>

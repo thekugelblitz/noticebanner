@@ -322,22 +322,21 @@ if (!class_exists('NoticeBannerHelper')) {
                         . '</div>';
                 }
 
-                // ── Acknowledge button (rendered in header controls, not body) ──
+                // ── Acknowledge button — uses AJAX so no page reload needed ──
                 $ackBtn = '';
                 $entityId   = ($area === 'admin') ? $currentAdminId : $currentClientId;
                 $entityType = $area === 'admin' ? 'admin' : 'client';
-                if ($entityId && function_exists('noticebanner_ensure_columns')) {
-                    $acked = self::hasAcknowledged((int)$n['id'], $entityType, $entityId);
+                // Addon module URL used as the AJAX endpoint (always available)
+                $ackEndpoint = 'addonmodules.php?module=noticebanner';
+                if ($entityId) {
+                    $acked    = self::hasAcknowledged((int)$n['id'], $entityType, $entityId);
+                    $btnId    = 'nb-ack-' . $n['id'];
                     if ($acked) {
-                        $ackBtn = '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 11px;border-radius:5px;background:#dcfce7;color:#166534;font-size:12px;font-weight:700;border:1px solid #bbf7d0;flex-shrink:0;">✓ Acknowledged</span>';
+                        $ackBtn = '<span id="' . $btnId . '" style="display:inline-flex;align-items:center;gap:4px;padding:3px 11px;border-radius:5px;background:#dcfce7;color:#166534;font-size:12px;font-weight:700;border:1px solid #bbf7d0;flex-shrink:0;white-space:nowrap;">✓ Acknowledged</span>';
                     } else {
-                        $ackBtn = '<form method="post" action="" style="display:inline-flex;">'
-                            . '<input type="hidden" name="mark_read" value="1">'
-                            . '<input type="hidden" name="mark_read_id" value="' . (int)$n['id'] . '">'
-                            . '<input type="hidden" name="mark_read_type" value="' . $entityType . '">'
-                            . '<input type="hidden" name="mark_read_entity" value="' . $entityId . '">'
-                            . '<button type="submit" style="padding:3px 11px;border-radius:5px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0;">Acknowledge</button>'
-                            . '</form>';
+                        $ackBtn = '<button id="' . $btnId . '" type="button"'
+                            . ' onclick="nbAcknowledge(this,' . (int)$n['id'] . ',\'' . $entityType . '\',' . $entityId . ',\'' . $ackEndpoint . '\')"'
+                            . ' style="padding:3px 11px;border-radius:5px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;cursor:pointer;font-size:12px;font-weight:700;flex-shrink:0;white-space:nowrap;">Acknowledge</button>';
                     }
                 }
 
@@ -440,6 +439,36 @@ if (!class_exists('NoticeBannerHelper')) {
                         . '</div>'
                         . '</div>';
                 }
+            }
+
+            if ($html !== '') {
+                // Inject the acknowledge JS helper once per page
+                $html .= '<script>
+if(typeof nbAcknowledge==="undefined"){
+function nbAcknowledge(btn,noticeId,entityType,entityId,endpoint){
+    btn.disabled=true;
+    btn.textContent="Saving…";
+    var fd=new FormData();
+    fd.append("mark_read","1");
+    fd.append("mark_read_id",noticeId);
+    fd.append("mark_read_type",entityType);
+    fd.append("mark_read_entity",entityId);
+    fetch(endpoint,{method:"POST",body:fd,credentials:"same-origin"})
+        .then(function(r){
+            if(r.ok||r.redirected){
+                btn.outerHTML=\'<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 11px;border-radius:5px;background:#dcfce7;color:#166534;font-size:12px;font-weight:700;border:1px solid #bbf7d0;flex-shrink:0;white-space:nowrap;">✓ Acknowledged</span>\';
+            } else {
+                btn.disabled=false;
+                btn.textContent="Acknowledge";
+            }
+        })
+        .catch(function(){
+            btn.disabled=false;
+            btn.textContent="Acknowledge";
+        });
+}
+}
+</script>';
             }
 
             return $html;

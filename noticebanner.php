@@ -383,6 +383,56 @@ function noticebanner_get_read_counts(int $noticeId): array {
 }
 }
 
+if (!function_exists('noticebanner_get_read_details')) {
+function noticebanner_get_read_details(int $noticeId): array {
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner_reads')
+            ->where('notice_id', $noticeId)
+            ->orderBy('read_at', 'desc')
+            ->get(['entity_type', 'entity_id', 'read_at'])
+            ->toArray();
+
+        $adminIds  = [];
+        $clientIds = [];
+        foreach ($rows as $r) {
+            if ($r->entity_type === 'admin')  $adminIds[]  = (int)$r->entity_id;
+            if ($r->entity_type === 'client') $clientIds[] = (int)$r->entity_id;
+        }
+
+        // Resolve names
+        $adminNames  = [];
+        $clientNames = [];
+        if (!empty($adminIds)) {
+            $aRows = \WHMCS\Database\Capsule::table('tbladmins')
+                ->whereIn('id', $adminIds)->get(['id', 'firstname', 'lastname', 'username'])->toArray();
+            foreach ($aRows as $a) $adminNames[(int)$a->id] = $a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')';
+        }
+        if (!empty($clientIds)) {
+            $cRows = \WHMCS\Database\Capsule::table('tblclients')
+                ->whereIn('id', $clientIds)->get(['id', 'firstname', 'lastname', 'email'])->toArray();
+            foreach ($cRows as $c) $clientNames[(int)$c->id] = $c->firstname . ' ' . $c->lastname . ' (' . $c->email . ')';
+        }
+
+        $out = [];
+        foreach ($rows as $r) {
+            $eid  = (int)$r->entity_id;
+            $name = $r->entity_type === 'admin'
+                ? ($adminNames[$eid]  ?? 'Admin #' . $eid)
+                : ($clientNames[$eid] ?? 'Client #' . $eid);
+            $out[] = [
+                'entity_type' => $r->entity_type,
+                'entity_id'   => $eid,
+                'name'        => $name,
+                'read_at'     => $r->read_at,
+            ];
+        }
+        return $out;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
 if (!function_exists('noticebanner_get_admins')) {
 function noticebanner_get_admins() {
     try {
@@ -620,20 +670,71 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Mark read ──
+        // ── Mark read (supports both AJAX fetch and normal POST) ──
         if (isset($_POST['mark_read'], $_POST['mark_read_id'])) {
             $nid  = (int)$_POST['mark_read_id'];
             $type = $_POST['mark_read_type'] ?? 'admin';
             $eid  = (int)($_POST['mark_read_entity'] ?? ($_SESSION['adminid'] ?? 0));
+            $ok   = false;
             try {
                 \WHMCS\Database\Capsule::table('mod_noticebanner_reads')->updateOrInsert(
                     ['notice_id' => $nid, 'entity_type' => $type, 'entity_id' => $eid],
                     ['read_at' => date('Y-m-d H:i:s')]
                 );
                 noticebanner_log($nid, 'acknowledged', "Type: $type, Entity: $eid");
+                $ok = true;
             } catch (\Exception $e) {}
+            // If called via fetch (AJAX), return JSON; otherwise redirect
+            $isAjax = !empty($_SERVER['HTTP_X_REQUESTED_WITH']) ||
+                      (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'application/json') !== false) ||
+                      // fetch() sends no special header by default — detect by absence of full HTML accept
+                      (isset($_SERVER['HTTP_ACCEPT']) && strpos($_SERVER['HTTP_ACCEPT'], 'text/html') === false);
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode(['ok' => $ok]);
+                exit;
+            }
             header('Location: ' . $_SERVER['REQUEST_URI']);
             exit;
+        }
+
+        // ── Remove acknowledgement (undo / fake management) ──
+        if (isset($_POST['remove_ack'])) {
+            $nid  = (int)($_POST['remove_ack_id'] ?? 0);
+            $type = $_POST['remove_ack_type'] ?? 'admin';
+            $eid  = (int)($_POST['remove_ack_entity'] ?? 0);
+            if ($nid && $eid) {
+                try {
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_reads')
+                        ->where('notice_id', $nid)
+                        ->where('entity_type', $type)
+                        ->where('entity_id', $eid)
+                        ->delete();
+                    noticebanner_log($nid, 'ack_removed', "Type: $type, Entity: $eid");
+                } catch (\Exception $e) {}
+            }
+            header('Location: ' . $_SERVER['REQUEST_URI']);
+            exit;
+        }
+
+        // ── Add fake acknowledgement ──
+        if (isset($_POST['add_fake_ack'])) {
+            $nid  = (int)($_POST['fake_ack_notice_id'] ?? 0);
+            $type = $_POST['fake_ack_type'] ?? 'admin';
+            $eids = isset($_POST['fake_ack_entities']) && is_array($_POST['fake_ack_entities'])
+                ? array_map('intval', $_POST['fake_ack_entities']) : [];
+            if ($nid && !empty($eids)) {
+                foreach ($eids as $eid) {
+                    try {
+                        \WHMCS\Database\Capsule::table('mod_noticebanner_reads')->updateOrInsert(
+                            ['notice_id' => $nid, 'entity_type' => $type, 'entity_id' => $eid],
+                            ['read_at' => date('Y-m-d H:i:s')]
+                        );
+                    } catch (\Exception $e) {}
+                }
+                noticebanner_log($nid, 'fake_ack_added', "Type: $type, Count: " . count($eids));
+                $message = '<div class="nb-alert nb-alert-success">Added ' . count($eids) . ' acknowledgement(s).</div>';
+            }
         }
 
         // ── Save notice (add or edit) ──
