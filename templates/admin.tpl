@@ -859,12 +859,19 @@ $now = date('Y-m-d H:i:s');
 
                         <!-- Poll management panel -->
                         <div id="<?php echo $pollPanelId; ?>" style="display:none;margin-top:10px;padding:14px;background:#fefce8;border:1px solid #fde68a;border-radius:8px;min-width:280px;max-width:420px;">
-                            <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px;display:flex;align-items:center;gap:6px;">⚙ Poll Management
-                                <form method="post" style="margin-left:auto;" onsubmit="return confirm('Reset ALL poll votes to zero? This cannot be undone.');">
-                                    <input type="hidden" name="reset_poll_id" value="<?php echo (int)$n['id']; ?>">
-                                    <button type="submit" name="reset_poll" value="1"
-                                        style="padding:2px 9px;border-radius:4px;background:#ef4444;color:#fff;font-weight:700;border:none;cursor:pointer;font-size:11px;">🗑 Reset All</button>
-                                </form>
+                            <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                                ⚙ Poll Management
+                                <div style="margin-left:auto;display:flex;gap:4px;flex-wrap:wrap;">
+                                    <a href="addonmodules.php?module=noticebanner&nb_export_votes=<?php echo (int)$n['id']; ?>&format=csv"
+                                        style="padding:2px 9px;border-radius:4px;background:#16a34a;color:#fff;font-weight:700;font-size:11px;text-decoration:none;white-space:nowrap;">⬇ CSV</a>
+                                    <a href="addonmodules.php?module=noticebanner&nb_export_votes=<?php echo (int)$n['id']; ?>&format=json"
+                                        style="padding:2px 9px;border-radius:4px;background:#0369a1;color:#fff;font-weight:700;font-size:11px;text-decoration:none;white-space:nowrap;">⬇ JSON</a>
+                                    <form method="post" style="margin:0;" onsubmit="return confirm('Reset ALL poll votes to zero? This cannot be undone.');">
+                                        <input type="hidden" name="reset_poll_id" value="<?php echo (int)$n['id']; ?>">
+                                        <button type="submit" name="reset_poll" value="1"
+                                            style="padding:2px 9px;border-radius:4px;background:#ef4444;color:#fff;font-weight:700;border:none;cursor:pointer;font-size:11px;">🗑 Reset</button>
+                                    </form>
+                                </div>
                             </div>
 
                             <!-- Voter list -->

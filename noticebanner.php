@@ -311,8 +311,16 @@ function noticebanner_get_notices(bool $forRendering = false) {
         $notices = [];
         foreach ($rows as $row) {
             $n = (array)$row;
-            $n['poll_options']     = json_decode($n['poll_options'] ?? '[]', true) ?: [];
-            $n['poll_results']     = json_decode($n['poll_results'] ?? '{}', true) ?: [];
+            // Decode HTML entities that may have been stored by older saves
+            $rawOpts = json_decode($n['poll_options'] ?? '[]', true) ?: [];
+            $n['poll_options']     = array_map('html_entity_decode', $rawOpts);
+            // Re-key poll_results to decoded keys so lookups match
+            $rawResults = json_decode($n['poll_results'] ?? '{}', true) ?: [];
+            $decodedResults = [];
+            foreach ($rawResults as $k => $v) {
+                $decodedResults[html_entity_decode($k)] = $v;
+            }
+            $n['poll_results']     = $decodedResults;
             $n['assigned_admins']  = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
             $n['mentioned_admins'] = json_decode($n['mentioned_admins'] ?? '[]', true) ?: [];
             $n['client_groups']    = json_decode($n['client_groups'] ?? '[]', true) ?: [];
@@ -341,7 +349,7 @@ function noticebanner_get_templates() {
         $out = [];
         foreach ($rows as $row) {
             $n = (array)$row;
-            $n['poll_options']     = json_decode($n['poll_options'] ?? '[]', true) ?: [];
+            $n['poll_options']     = array_map('html_entity_decode', json_decode($n['poll_options'] ?? '[]', true) ?: []);
             $n['assigned_admins']  = json_decode($n['assigned_admins'] ?? '[]', true) ?: [];
             $n['client_groups']    = json_decode($n['client_groups'] ?? '[]', true) ?: [];
             $n['target_clients']   = json_decode($n['target_clients'] ?? '[]', true) ?: [];
@@ -638,7 +646,7 @@ function noticebanner_build_payload(): array {
     $assignedAdmins = isset($_POST['assigned_admins']) && is_array($_POST['assigned_admins'])
         ? array_values(array_unique(array_map('intval', $_POST['assigned_admins']))) : [];
     $pollOptions = isset($_POST['poll_options']) && is_array($_POST['poll_options'])
-        ? array_values(array_filter(array_map('trim', $_POST['poll_options']), fn($v) => $v !== '')) : [];
+        ? array_values(array_filter(array_map(fn($v) => html_entity_decode(trim($v)), $_POST['poll_options']), fn($v) => $v !== '')) : [];
     $clientGroups   = isset($_POST['client_groups']) && is_array($_POST['client_groups'])
         ? array_values(array_unique(array_map('intval', $_POST['client_groups']))) : [];
     $targetClients  = isset($_POST['target_clients']) && is_array($_POST['target_clients'])
@@ -705,6 +713,93 @@ if (!function_exists('noticebanner_output')) {
 function noticebanner_output($vars) {
     noticebanner_ensure_table();
     noticebanner_ensure_columns();
+
+    // ── Export poll votes: ?nb_export_votes=<id>&format=csv|json ──
+    if (!empty($_GET['nb_export_votes'])) {
+        $nid    = (int)$_GET['nb_export_votes'];
+        $format = strtolower(trim($_GET['format'] ?? 'csv'));
+
+        // Load the notice for its question/options
+        $notice = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
+        $question = $notice ? ($notice->poll_question ?? 'Poll') : 'Poll';
+        $aggResults = $notice ? (json_decode($notice->poll_results ?? '{}', true) ?: []) : [];
+        $totalVotes = array_sum($aggResults);
+
+        $voters = noticebanner_get_poll_voters($nid);
+
+        $slug = preg_replace('/[^a-z0-9]+/', '-', strtolower($question));
+        $slug = trim($slug, '-') ?: 'poll';
+        $filename = 'poll-votes-' . $nid . '-' . $slug;
+
+        if ($format === 'json') {
+            // ── JSON export ──
+            $export = [
+                'notice_id'    => $nid,
+                'question'     => $question,
+                'exported_at'  => date('Y-m-d H:i:s'),
+                'summary'      => [],
+                'votes'        => [],
+            ];
+            foreach ($aggResults as $opt => $cnt) {
+                $pct = $totalVotes > 0 ? round(($cnt / $totalVotes) * 100, 1) : 0;
+                $export['summary'][] = [
+                    'option'     => $opt,
+                    'votes'      => $cnt,
+                    'percentage' => $pct,
+                ];
+            }
+            foreach ($voters as $v) {
+                $export['votes'][] = [
+                    'type'          => $v['entity_type'],
+                    'name'          => $v['label'],
+                    'option'        => $v['poll_option'],
+                    'is_predefined' => $v['is_predefined'],
+                    'vote_count'    => $v['vote_count'],
+                    'voted_at'      => $v['voted_at'],
+                ];
+            }
+            header('Content-Type: application/json');
+            header('Content-Disposition: attachment; filename="' . $filename . '.json"');
+            echo json_encode($export, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+
+        // ── CSV export (default) ──
+        header('Content-Type: text/csv; charset=UTF-8');
+        header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
+        // UTF-8 BOM so Excel opens it correctly
+        echo "\xEF\xBB\xBF";
+
+        $out = fopen('php://output', 'w');
+
+        // Section 1: Summary
+        fputcsv($out, ['=== SUMMARY ===']);
+        fputcsv($out, ['Notice ID', 'Question', 'Total Votes', 'Exported At']);
+        fputcsv($out, [$nid, $question, $totalVotes, date('Y-m-d H:i:s')]);
+        fputcsv($out, []);
+        fputcsv($out, ['Option', 'Votes', 'Percentage']);
+        foreach ($aggResults as $opt => $cnt) {
+            $pct = $totalVotes > 0 ? round(($cnt / $totalVotes) * 100, 1) : 0;
+            fputcsv($out, [$opt, $cnt, $pct . '%']);
+        }
+        fputcsv($out, []);
+
+        // Section 2: Individual votes
+        fputcsv($out, ['=== INDIVIDUAL VOTES ===']);
+        fputcsv($out, ['Type', 'Name / Label', 'Option Voted', 'Is Predefined', 'Vote Count', 'Voted At']);
+        foreach ($voters as $v) {
+            fputcsv($out, [
+                ucfirst($v['entity_type']),
+                $v['label'],
+                $v['poll_option'],
+                $v['is_predefined'] ? 'Yes' : 'No',
+                $v['vote_count'],
+                $v['voted_at'],
+            ]);
+        }
+        fclose($out);
+        exit;
+    }
 
     // ── Debug: ?nb_debug_depts=1 — dumps raw department query info ──
     if (!empty($_GET['nb_debug_depts'])) {
@@ -1080,8 +1175,11 @@ function noticebanner_output($vars) {
             $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
             if ($row) {
                 $edit_notice = (array)$row;
-                $edit_notice['poll_options']    = json_decode($edit_notice['poll_options'] ?? '[]', true) ?: [];
-                $edit_notice['poll_results']    = json_decode($edit_notice['poll_results'] ?? '{}', true) ?: [];
+                $edit_notice['poll_options']    = array_map('html_entity_decode', json_decode($edit_notice['poll_options'] ?? '[]', true) ?: []);
+                $rawRes = json_decode($edit_notice['poll_results'] ?? '{}', true) ?: [];
+                $decRes = [];
+                foreach ($rawRes as $k => $v) $decRes[html_entity_decode($k)] = $v;
+                $edit_notice['poll_results']    = $decRes;
                 $edit_notice['assigned_admins'] = json_decode($edit_notice['assigned_admins'] ?? '[]', true) ?: [];
                 $edit_notice['client_groups']   = json_decode($edit_notice['client_groups'] ?? '[]', true) ?: [];
                 $edit_notice['target_clients']  = json_decode($edit_notice['target_clients'] ?? '[]', true) ?: [];
