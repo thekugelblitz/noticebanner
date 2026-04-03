@@ -31,7 +31,7 @@ Outbound HTTPS requirement (IMPORTANT)
 --------------------------------------
 The license engine (license.php) makes an outbound HTTPS POST to (default):
 
-  https://whmcsapi.hostingspell.com/api/validate.php
+  https://whmcsapi.hostingspell.com/noticebanner-license-api/validate.php
 
 Customer servers MUST be able to reach this URL over HTTPS (port 443).
 Optional override: copy noticebanner-license-url.example.php to

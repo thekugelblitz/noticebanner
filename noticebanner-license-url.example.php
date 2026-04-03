@@ -19,5 +19,5 @@
  * (Prefer installing Let’s Encrypt on the API vhost instead.)
  */
 
-// define('NB_LICENSE_API_URL', 'https://whmcsapi.hostingspell.com/api/validate.php');
+// define('NB_LICENSE_API_URL', 'https://whmcsapi.hostingspell.com/noticebanner-license-api/validate.php');
 // define('NB_LICENSE_SSL_VERIFY_PEER', false);

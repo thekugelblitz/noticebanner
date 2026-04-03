@@ -5,7 +5,7 @@
  * License key is stored in mod_noticebanner_license (not in tbladdonmodules).
  * free_max_notices comes from the API response per-key (not editable by customer).
  *
- * Remote endpoint: https://whmcsapi.hostingspell.com/api/validate.php (DNS-only / grey cloud)
+ * Remote endpoint: https://whmcsapi.hostingspell.com/noticebanner-license-api/validate.php
  */
 
 if (!defined('WHMCS')) {
@@ -23,7 +23,7 @@ if (is_file($__nbLicUrlFile)) {
 
 define('NB_LICENSE_PRODUCT',     'noticebanner-whmcs');
 if (!defined('NB_LICENSE_API_URL')) {
-    define('NB_LICENSE_API_URL', 'https://whmcsapi.hostingspell.com/api/validate.php');
+    define('NB_LICENSE_API_URL', 'https://whmcsapi.hostingspell.com/noticebanner-license-api/validate.php');
 }
 // Optional in noticebanner-license-url.php: define('NB_LICENSE_SSL_VERIFY_PEER', false);
 if (!defined('NB_LICENSE_SSL_VERIFY_PEER')) {
