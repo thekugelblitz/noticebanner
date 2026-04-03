@@ -870,58 +870,56 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Predefined votes (admin only — multi-option, deduplicated by label+option) ──
-        if (isset($_POST['fake_poll_vote'], $_POST['fake_poll_notice_id'])) {
-            $nid      = (int)$_POST['fake_poll_notice_id'];
-            $label    = trim($_POST['fake_poll_label'] ?? '') ?: 'Predefined Vote';
-            // New multi-option form: fake_poll_options[] + fake_poll_counts[idx]
-            $options  = isset($_POST['fake_poll_options']) && is_array($_POST['fake_poll_options'])
-                        ? $_POST['fake_poll_options'] : [];
-            $counts   = isset($_POST['fake_poll_counts'])  && is_array($_POST['fake_poll_counts'])
-                        ? $_POST['fake_poll_counts']  : [];
+        // ── Predefined votes (admin only) ──────────────────────────────────────
+        // Form sends: predefined_poll_counts[base64(option)] = N  (N=0 means skip)
+        if (isset($_POST['predefined_poll_vote'], $_POST['predefined_poll_notice_id'])) {
+            $nid    = (int)$_POST['predefined_poll_notice_id'];
+            $label  = trim($_POST['predefined_poll_label'] ?? '') ?: 'Predefined Vote';
+            $rawCounts = isset($_POST['predefined_poll_counts']) && is_array($_POST['predefined_poll_counts'])
+                         ? $_POST['predefined_poll_counts'] : [];
 
-            // Legacy single-option fallback
-            if (empty($options) && !empty($_POST['fake_poll_option'])) {
-                $options = [$_POST['fake_poll_option']];
-                $counts  = [0 => max(1, (int)($_POST['fake_poll_count'] ?? 1))];
-            }
-
-            if ($nid && !empty($options)) {
+            if ($nid && !empty($rawCounts)) {
                 try {
                     $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
                     if ($row) {
                         $results = json_decode($row->poll_results ?? '{}', true) ?: [];
-                        $now     = date('Y-m-d H:i:s');
+                        // Re-key results with decoded keys (clean any stored entities)
+                        $cleanResults = [];
+                        foreach ($results as $k => $v) {
+                            $cleanResults[html_entity_decode($k, ENT_QUOTES | ENT_HTML5, 'UTF-8')] = (int)$v;
+                        }
+                        $now = date('Y-m-d H:i:s');
+                        $applied = 0;
 
-                        foreach ($options as $idx => $opt) {
-                            $opt   = (string)$opt;
-                            $count = max(0, (int)($counts[$idx] ?? 1));
-                            if ($count === 0) continue;
+                        foreach ($rawCounts as $b64key => $rawCount) {
+                            $count = (int)$rawCount;
+                            if ($count <= 0) continue;
 
-                            // Update aggregate counter
-                            $results[$opt] = ($results[$opt] ?? 0) + $count;
+                            // Decode the base64 key to get the real option string
+                            $opt = base64_decode((string)$b64key, true);
+                            if ($opt === false || $opt === '') continue;
+                            $opt = html_entity_decode($opt, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
-                            // Deduplicate: find existing predefined row with same notice+label+option
+                            // Update aggregate
+                            $cleanResults[$opt] = ($cleanResults[$opt] ?? 0) + $count;
+
+                            // Upsert predefined vote record (deduplicated by notice+label+option)
                             $existing = \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
-                                ->where('notice_id',    $nid)
+                                ->where('notice_id',     $nid)
                                 ->where('is_predefined', 1)
-                                ->where('entity_label', $label)
-                                ->where('poll_option',  $opt)
+                                ->where('entity_label',  $label)
+                                ->where('poll_option',   $opt)
                                 ->first(['id', 'entity_id']);
 
                             if ($existing) {
-                                // entity_id stores the running count for predefined rows
                                 \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
                                     ->where('id', $existing->id)
-                                    ->update([
-                                        'entity_id' => $existing->entity_id + $count,
-                                        'voted_at'  => $now,
-                                    ]);
+                                    ->update(['entity_id' => (int)$existing->entity_id + $count, 'voted_at' => $now]);
                             } else {
                                 \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->insert([
                                     'notice_id'     => $nid,
                                     'entity_type'   => 'predefined',
-                                    'entity_id'     => $count,   // running count stored here
+                                    'entity_id'     => $count,
                                     'entity_label'  => $label,
                                     'poll_option'   => $opt,
                                     'is_predefined' => 1,
@@ -929,10 +927,13 @@ function noticebanner_output($vars) {
                                 ]);
                             }
                             noticebanner_log($nid, 'predefined_poll_vote', "Option: $opt, +$count, Label: $label");
+                            $applied++;
                         }
 
-                        \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
-                            ->update(['poll_results' => json_encode($results), 'updated_at' => $now]);
+                        if ($applied > 0) {
+                            \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
+                                ->update(['poll_results' => json_encode($cleanResults), 'updated_at' => $now]);
+                        }
                     }
                 } catch (\Exception $e) {}
             }
@@ -1013,7 +1014,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Remove acknowledgement (undo / fake management) ──
+        // ── Remove acknowledgement ──
         if (isset($_POST['remove_ack'])) {
             $nid  = (int)($_POST['remove_ack_id'] ?? 0);
             $type = $_POST['remove_ack_type'] ?? 'admin';
@@ -1032,12 +1033,12 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Add fake acknowledgement ──
-        if (isset($_POST['add_fake_ack'])) {
-            $nid  = (int)($_POST['fake_ack_notice_id'] ?? 0);
-            $type = $_POST['fake_ack_type'] ?? 'admin';
-            $eids = isset($_POST['fake_ack_entities']) && is_array($_POST['fake_ack_entities'])
-                ? array_map('intval', $_POST['fake_ack_entities']) : [];
+        // ── Add predefined acknowledgement ──
+        if (isset($_POST['add_predefined_ack'])) {
+            $nid  = (int)($_POST['predefined_ack_notice_id'] ?? 0);
+            $type = $_POST['predefined_ack_type'] ?? 'admin';
+            $eids = isset($_POST['predefined_ack_entities']) && is_array($_POST['predefined_ack_entities'])
+                ? array_map('intval', $_POST['predefined_ack_entities']) : [];
             if ($nid && !empty($eids)) {
                 foreach ($eids as $eid) {
                     try {
@@ -1047,7 +1048,7 @@ function noticebanner_output($vars) {
                         );
                     } catch (\Exception $e) {}
                 }
-                noticebanner_log($nid, 'fake_ack_added', "Type: $type, Count: " . count($eids));
+                noticebanner_log($nid, 'predefined_ack_added', "Type: $type, Count: " . count($eids));
                 $message = '<div class="nb-alert nb-alert-success">Added ' . count($eids) . ' acknowledgement(s).</div>';
             }
         }

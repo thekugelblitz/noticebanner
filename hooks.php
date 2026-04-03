@@ -194,16 +194,76 @@ if (!class_exists('NoticeBannerHelper')) {
         // ── Handle poll vote POST on any page (called from hook, exits with JSON) ──
         public static function handlePollVotePost(): void {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
+
+            // ── Reset own vote ──────────────────────────────────────────────
+            if (!empty($_POST['nb_poll_reset_vote'])) {
+                $nid        = (int)($_POST['poll_notice_id'] ?? 0);
+                $isAdmin    = !empty($_SESSION['adminid']);
+                $entityType = $isAdmin ? 'admin' : 'client';
+                $entityId   = $isAdmin ? (int)$_SESSION['adminid'] : (int)($_SESSION['uid'] ?? 0);
+
+                if ($nid && $entityId) {
+                    try {
+                        noticebanner_ensure_table();
+                        noticebanner_ensure_columns();
+                        // Find the existing vote record
+                        $vrow = \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
+                            ->where('notice_id',    $nid)
+                            ->where('entity_type',  $entityType)
+                            ->where('entity_id',    $entityId)
+                            ->where('is_predefined', 0)
+                            ->first();
+                        if ($vrow) {
+                            \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
+                                ->where('id', $vrow->id)->delete();
+                            // Decrement aggregate
+                            $nrow = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
+                            if ($nrow) {
+                                $results = json_decode($nrow->poll_results ?? '{}', true) ?: [];
+                                $opt     = $vrow->poll_option;
+                                if (isset($results[$opt]) && $results[$opt] > 0) $results[$opt]--;
+                                \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
+                                    ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
+                                $total = array_sum($results);
+                                noticebanner_log($nid, 'poll_vote_reset', "$entityType #$entityId reset vote");
+                                header('Content-Type: application/json');
+                                echo json_encode(['ok' => true, 'reset' => true, 'results' => $results, 'total' => $total]);
+                                exit;
+                            }
+                        }
+                    } catch (\Exception $e) {}
+                }
+                header('Content-Type: application/json');
+                echo json_encode(['ok' => false]);
+                exit;
+            }
+
             if (empty($_POST['nb_poll_vote'])) return;
 
+            // ── Cast vote ───────────────────────────────────────────────────
             $nid  = (int)($_POST['poll_notice_id'] ?? 0);
-            $vote = $_POST['poll_vote'] ?? '';
-            $ok   = false;
+            $vote = html_entity_decode($_POST['poll_vote'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
             if ($nid && $vote !== '') {
                 try {
                     noticebanner_ensure_table();
                     noticebanner_ensure_columns();
+
+                    $isAdmin    = !empty($_SESSION['adminid']);
+                    $entityType = $isAdmin ? 'admin' : 'client';
+                    $entityId   = $isAdmin ? (int)$_SESSION['adminid'] : (int)($_SESSION['uid'] ?? 0);
+
+                    // Block duplicate votes — return current state so JS can show it
+                    if ($entityId && self::hasVoted($nid, $entityType, $entityId)) {
+                        $existing = self::getVotedOption($nid, $entityType, $entityId);
+                        $nrow     = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
+                        $results  = $nrow ? (json_decode($nrow->poll_results ?? '{}', true) ?: []) : [];
+                        $total    = array_sum($results);
+                        header('Content-Type: application/json');
+                        echo json_encode(['ok' => false, 'already_voted' => true, 'voted_option' => $existing, 'results' => $results, 'total' => $total]);
+                        exit;
+                    }
+
                     $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)->first();
                     if ($row) {
                         $results        = json_decode($row->poll_results ?? '{}', true) ?: [];
@@ -211,11 +271,8 @@ if (!class_exists('NoticeBannerHelper')) {
                         \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $nid)
                             ->update(['poll_results' => json_encode($results), 'updated_at' => date('Y-m-d H:i:s')]);
 
-                        // Determine who voted and cache their display label
-                        $isAdmin    = !empty($_SESSION['adminid']);
-                        $entityType = $isAdmin ? 'admin' : 'client';
-                        $entityId   = $isAdmin ? (int)$_SESSION['adminid'] : (int)($_SESSION['uid'] ?? 0);
-                        $label      = '';
+                        // Cache display label
+                        $label = '';
                         if ($entityId) {
                             try {
                                 if ($isAdmin) {
@@ -228,19 +285,19 @@ if (!class_exists('NoticeBannerHelper')) {
                             } catch (\Exception $e) {}
                         }
                         \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')->insert([
-                            'notice_id'    => $nid,
-                            'entity_type'  => $entityType,
-                            'entity_id'    => $entityId,
-                            'entity_label' => $label,
-                            'poll_option'  => $vote,
-                            'is_predefined'=> 0,
-                            'voted_at'     => date('Y-m-d H:i:s'),
+                            'notice_id'     => $nid,
+                            'entity_type'   => $entityType,
+                            'entity_id'     => $entityId,
+                            'entity_label'  => $label,
+                            'poll_option'   => $vote,
+                            'is_predefined' => 0,
+                            'voted_at'      => date('Y-m-d H:i:s'),
                         ]);
 
                         noticebanner_log($nid, 'poll_vote', "$entityType #$entityId voted: $vote");
                         $total = array_sum($results);
                         header('Content-Type: application/json');
-                        echo json_encode(['ok' => true, 'results' => $results, 'total' => $total]);
+                        echo json_encode(['ok' => true, 'results' => $results, 'total' => $total, 'voted_option' => $vote]);
                         exit;
                     }
                 } catch (\Exception $e) {}
@@ -284,6 +341,34 @@ if (!class_exists('NoticeBannerHelper')) {
             header('Content-Type: application/json');
             echo json_encode(['ok' => $ok]);
             exit;
+        }
+
+        // ── Check if entity has already voted on a poll (non-predefined only) ──
+        private static function hasVoted(int $noticeId, string $type, int $entityId): bool {
+            if (!$entityId) return false;
+            try {
+                return \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
+                    ->where('notice_id',    $noticeId)
+                    ->where('entity_type',  $type)
+                    ->where('entity_id',    $entityId)
+                    ->where('is_predefined', 0)
+                    ->exists();
+            } catch (\Exception $e) { return false; }
+        }
+
+        // ── Get the option the entity voted for (null if not voted) ──────────
+        private static function getVotedOption(int $noticeId, string $type, int $entityId): ?string {
+            if (!$entityId) return null;
+            try {
+                $row = \WHMCS\Database\Capsule::table('mod_noticebanner_poll_votes')
+                    ->where('notice_id',    $noticeId)
+                    ->where('entity_type',  $type)
+                    ->where('entity_id',    $entityId)
+                    ->where('is_predefined', 0)
+                    ->orderBy('voted_at', 'desc')
+                    ->first(['poll_option']);
+                return $row ? $row->poll_option : null;
+            } catch (\Exception $e) { return null; }
         }
 
         // ── Check if entity has already acknowledged a notice ────────────────
@@ -475,36 +560,77 @@ if (!class_exists('NoticeBannerHelper')) {
                 // ── Poll ──
                 $pollHtml = '';
                 if (!empty($n['poll_enabled']) && !empty($n['poll_question']) && !empty($n['poll_options'])) {
-                    $results   = $n['poll_results'] ?? [];
-                    $total     = array_sum($results);
-                    $pollDivId = 'nb-poll-' . (int)$n['id'];
-                    $pollHtml  = '<div id="' . $pollDivId . '" style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,0.04);border-radius:8px;max-width:480px;">'
-                        . '<div style="font-weight:600;margin-bottom:8px;">' . htmlspecialchars($n['poll_question'], ENT_QUOTES, 'UTF-8') . '</div>';
+                    $results    = $n['poll_results'] ?? [];
+                    $total      = array_sum($results);
+                    $pollDivId  = 'nb-poll-' . (int)$n['id'];
+                    $pollNid    = (int)$n['id'];
+
+                    // Check if this viewer already voted
+                    $isAdmin      = !empty($_SESSION['adminid']);
+                    $pollEntType  = $isAdmin ? 'admin' : 'client';
+                    $pollEntId    = $isAdmin ? (int)($_SESSION['adminid'] ?? 0) : (int)($_SESSION['uid'] ?? 0);
+                    $alreadyVoted = $pollEntId ? self::hasVoted($pollNid, $pollEntType, $pollEntId) : false;
+                    $votedOption  = $alreadyVoted ? self::getVotedOption($pollNid, $pollEntType, $pollEntId) : null;
+
+                    $pollHtml = '<div id="' . $pollDivId . '" style="margin-top:14px;padding:12px 16px;background:rgba(0,0,0,0.04);border-radius:8px;max-width:480px;">'
+                        . '<div style="font-weight:600;margin-bottom:8px;">' . htmlspecialchars($n['poll_question'], ENT_NOQUOTES, 'UTF-8') . '</div>';
+
                     foreach ($n['poll_options'] as $opt) {
-                        $votes   = $results[$opt] ?? 0;
-                        $pct     = $total > 0 ? round(($votes / $total) * 100) : 0;
-                        // Use base64 to safely pass option value through JS without encoding issues
-                        $optB64  = base64_encode($opt);
-                        $optAttr = htmlspecialchars($opt, ENT_QUOTES, 'UTF-8');
-                        $optDisp = htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8');
-                        $barW    = $total > 0 ? $pct : 0;
-                        $pollHtml .= '<label style="display:block;margin-bottom:8px;font-size:14px;cursor:pointer;">'
-                            . '<div style="display:flex;align-items:center;gap:8px;">'
-                            . '<input type="radio" name="nb_poll_opt_' . (int)$n['id'] . '" data-b64="' . $optB64 . '" value="' . $optAttr . '" style="margin:0;flex-shrink:0;">'
-                            . '<span>' . $optDisp . '</span>'
-                            . '<span class="nb-poll-stat" style="font-size:11px;opacity:0.6;margin-left:auto;white-space:nowrap;">' . $votes . ' vote' . ($votes == 1 ? '' : 's') . ' (' . $pct . '%)</span>'
-                            . '</div>'
-                            . '<div style="height:4px;background:#e2e8f0;border-radius:2px;margin-top:3px;margin-left:20px;">'
-                            . '<div class="nb-poll-bar" style="height:4px;background:#6366f1;border-radius:2px;width:' . $barW . '%;transition:width 0.4s;"></div>'
-                            . '</div>'
-                            . '</label>';
+                        $votes    = $results[$opt] ?? 0;
+                        $pct      = $total > 0 ? round(($votes / $total) * 100) : 0;
+                        $optB64   = base64_encode($opt);
+                        $optAttr  = htmlspecialchars($opt, ENT_QUOTES, 'UTF-8');
+                        $optDisp  = htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8');
+                        $barW     = $total > 0 ? $pct : 0;
+                        $isChosen = ($alreadyVoted && $votedOption === $opt);
+
+                        if ($alreadyVoted) {
+                            // Read-only results row — highlight the chosen option
+                            $chosenStyle = $isChosen ? 'font-weight:700;color:#4f46e5;' : 'opacity:0.75;';
+                            $barColor    = $isChosen ? '#6366f1' : '#94a3b8';
+                            $checkMark   = $isChosen ? ' <span style="color:#16a34a;font-size:13px;">✓</span>' : '';
+                            $pollHtml .= '<div data-poll-row="' . $optB64 . '" style="margin-bottom:8px;font-size:14px;' . $chosenStyle . '">'
+                                . '<div style="display:flex;align-items:center;gap:6px;">'
+                                . '<span style="flex:1;">' . $optDisp . $checkMark . '</span>'
+                                . '<span class="nb-poll-stat" style="font-size:11px;opacity:0.7;white-space:nowrap;">' . $votes . ' vote' . ($votes == 1 ? '' : 's') . ' (' . $pct . '%)</span>'
+                                . '</div>'
+                                . '<div style="height:4px;background:#e2e8f0;border-radius:2px;margin-top:4px;">'
+                                . '<div class="nb-poll-bar" style="height:4px;background:' . $barColor . ';border-radius:2px;width:' . $barW . '%;transition:width 0.4s;"></div>'
+                                . '</div>'
+                                . '</div>';
+                        } else {
+                            // Voting form row
+                            $pollHtml .= '<label data-poll-row="' . $optB64 . '" style="display:block;margin-bottom:8px;font-size:14px;cursor:pointer;">'
+                                . '<div style="display:flex;align-items:center;gap:8px;">'
+                                . '<input type="radio" name="nb_poll_opt_' . $pollNid . '" data-b64="' . $optB64 . '" value="' . $optAttr . '" style="margin:0;flex-shrink:0;">'
+                                . '<span>' . $optDisp . '</span>'
+                                . '<span class="nb-poll-stat" style="font-size:11px;opacity:0.6;margin-left:auto;white-space:nowrap;">' . $votes . ' vote' . ($votes == 1 ? '' : 's') . ' (' . $pct . '%)</span>'
+                                . '</div>'
+                                . '<div style="height:4px;background:#e2e8f0;border-radius:2px;margin-top:3px;margin-left:20px;">'
+                                . '<div class="nb-poll-bar" style="height:4px;background:#6366f1;border-radius:2px;width:' . $barW . '%;transition:width 0.4s;"></div>'
+                                . '</div>'
+                                . '</label>';
+                        }
                     }
-                    $pollHtml .= '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">'
-                        . '<button type="button" onclick="nbPollVote(this,' . (int)$n['id'] . ')" '
-                        . 'style="padding:5px 18px;border-radius:5px;background:#6366f1;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:13px;">Vote</button>'
-                        . '<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">' . $total . ' total vote' . ($total == 1 ? '' : 's') . '</span>'
-                        . '</div>'
-                        . '</div>';
+
+                    if ($alreadyVoted && $pollEntId) {
+                        // Already voted — show result summary + Change Vote button
+                        $pollHtml .= '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;flex-wrap:wrap;">'
+                            . '<span style="font-size:12px;background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-weight:600;">✓ You voted: ' . htmlspecialchars($votedOption ?? '', ENT_NOQUOTES, 'UTF-8') . '</span>'
+                            . '<button type="button" id="nb-poll-change-' . $pollNid . '" '
+                            . 'onclick="nbPollReset(this,' . $pollNid . ',' . $pollEntId . ',\'' . $pollEntType . '\')" '
+                            . 'style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">↺ Change Vote</button>'
+                            . '<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">' . $total . ' total vote' . ($total == 1 ? '' : 's') . '</span>'
+                            . '</div>';
+                    } else {
+                        $pollHtml .= '<div style="display:flex;align-items:center;gap:10px;margin-top:8px;">'
+                            . '<button type="button" onclick="nbPollVote(this,' . $pollNid . ')" '
+                            . 'style="padding:5px 18px;border-radius:5px;background:#6366f1;color:#fff;font-weight:600;border:none;cursor:pointer;font-size:13px;">Vote</button>'
+                            . '<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">' . $total . ' total vote' . ($total == 1 ? '' : 's') . '</span>'
+                            . '</div>';
+                    }
+
+                    $pollHtml .= '</div>';
                 }
 
                 // ── Body ──
@@ -585,6 +711,30 @@ function nbAcknowledge(btn,noticeId,entityType,entityId){
 }
 }
 if(typeof nbPollVote==="undefined"){
+// Rebuild the poll wrap to show voted/unvoted state from server data
+function nbPollApplyResults(wrap,noticeId,results,total,votedOption){
+    var rows=wrap.querySelectorAll("[data-poll-row]");
+    rows.forEach(function(row){
+        var b64=row.getAttribute("data-poll-row");
+        var key=b64?atob(b64):row.getAttribute("data-poll-key");
+        var cnt=results[key]||0;
+        var pct=total>0?Math.round(cnt/total*100):0;
+        var stat=row.querySelector(".nb-poll-stat");
+        var bar=row.querySelector(".nb-poll-bar");
+        if(stat)stat.textContent=cnt+" vote"+(cnt===1?"":"s")+" ("+pct+"%)";
+        if(bar)bar.style.width=pct+"%";
+        // Highlight chosen
+        if(votedOption!==undefined){
+            var isChosen=(key===votedOption);
+            row.style.fontWeight=isChosen?"700":"";
+            row.style.opacity=isChosen?"1":"0.75";
+            row.style.color=isChosen?"#4f46e5":"";
+            if(bar)bar.style.background=isChosen?"#6366f1":"#94a3b8";
+        }
+    });
+    var tot=wrap.querySelector(".nb-poll-total");
+    if(tot)tot.textContent=total+" total vote"+(total===1?"":"s");
+}
 function nbPollVote(btn,noticeId){
     var wrap=document.getElementById("nb-poll-"+noticeId);
     if(!wrap)return;
@@ -595,7 +745,6 @@ function nbPollVote(btn,noticeId){
     var fd=new FormData();
     fd.append("nb_poll_vote","1");
     fd.append("poll_notice_id",noticeId);
-    // Decode base64 option value to preserve special characters exactly
     var raw=sel.getAttribute("data-b64");
     var vote=raw?atob(raw):sel.value;
     fd.append("poll_vote",vote);
@@ -603,26 +752,22 @@ function nbPollVote(btn,noticeId){
         .then(function(r){return r.json();})
         .then(function(data){
             if(data&&data.ok){
-                var results=data.results;
-                var total=data.total;
-                var labels=wrap.querySelectorAll("input[type=radio]");
-                labels.forEach(function(inp){
-                    var key=inp.getAttribute("data-b64")?atob(inp.getAttribute("data-b64")):inp.value;
-                    var cnt=results[key]||0;
-                    var pct=total>0?Math.round(cnt/total*100):0;
-                    var lbl=inp.closest("label");
-                    if(lbl){
-                        var stat=lbl.querySelector(".nb-poll-stat");
-                        var bar=lbl.querySelector(".nb-poll-bar");
-                        if(stat)stat.textContent=cnt+" vote"+(cnt===1?"":"s")+" ("+pct+"%)";
-                        if(bar)bar.style.width=pct+"%";
-                    }
-                    inp.disabled=true;
-                });
-                var tot=wrap.querySelector(".nb-poll-total");
-                if(tot)tot.textContent=total+" total vote"+(total===1?"":"s");
-                btn.textContent="\u2713 Voted!";
-                btn.style.background="#10b981";
+                // Disable all radios, update bars
+                wrap.querySelectorAll("input[type=radio]").forEach(function(i){i.disabled=true;});
+                nbPollApplyResults(wrap,noticeId,data.results,data.total,data.voted_option);
+                // Swap Vote button for "You voted + Change Vote"
+                var btnWrap=btn.parentNode;
+                btnWrap.innerHTML=\'<span style="font-size:12px;background:#dcfce7;color:#166534;padding:3px 10px;border-radius:12px;font-weight:600;">\u2713 You voted: \'+data.voted_option+\'</span>\'
+                    +\'<button type="button" onclick="nbPollReset(this,\'+noticeId+\',0,\'\'auto\'\')" style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">\u21ba Change Vote</button>\'
+                    +\'<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">\'+data.total+\' total vote\'+(data.total===1?"":"s")+\'</span>\';
+            } else if(data&&data.already_voted){
+                // Already voted — show current state
+                wrap.querySelectorAll("input[type=radio]").forEach(function(i){i.disabled=true;});
+                nbPollApplyResults(wrap,noticeId,data.results,data.total,data.voted_option);
+                var btnWrap=btn.parentNode;
+                btnWrap.innerHTML=\'<span style="font-size:12px;background:#fef9c3;color:#92400e;padding:3px 10px;border-radius:12px;font-weight:600;">You already voted: \'+data.voted_option+\'</span>\'
+                    +\'<button type="button" onclick="nbPollReset(this,\'+noticeId+\',0,\'\'auto\'\')" style="padding:3px 12px;border-radius:5px;background:#f1f5f9;color:#475569;border:1px solid #cbd5e1;cursor:pointer;font-size:12px;font-weight:600;">\u21ba Change Vote</button>\'
+                    +\'<span class="nb-poll-total" style="font-size:12px;opacity:0.55;">\'+data.total+\' total vote\'+(data.total===1?"":"s")+\'</span>\';
             } else {
                 btn.disabled=false;
                 btn.textContent="Vote";
@@ -631,6 +776,29 @@ function nbPollVote(btn,noticeId){
         .catch(function(){
             btn.disabled=false;
             btn.textContent="Vote";
+        });
+}
+function nbPollReset(btn,noticeId,entityId,entityType){
+    btn.disabled=true;
+    btn.textContent="Resetting\u2026";
+    var fd=new FormData();
+    fd.append("nb_poll_reset_vote","1");
+    fd.append("poll_notice_id",noticeId);
+    fetch(window.location.href,{method:"POST",body:fd,credentials:"same-origin",headers:{"X-Requested-With":"XMLHttpRequest"}})
+        .then(function(r){return r.json();})
+        .then(function(data){
+            if(data&&data.ok&&data.reset){
+                // Reload the poll widget to show fresh voting form
+                // Simplest reliable approach: reload the page
+                window.location.reload();
+            } else {
+                btn.disabled=false;
+                btn.textContent="\u21ba Change Vote";
+            }
+        })
+        .catch(function(){
+            btn.disabled=false;
+            btn.textContent="\u21ba Change Vote";
         });
 }
 }

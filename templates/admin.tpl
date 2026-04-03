@@ -453,7 +453,7 @@ $now = date('Y-m-d H:i:s');
                         if (empty($existingOpts)) $existingOpts = ['', ''];
                         foreach ($existingOpts as $opt): ?>
                             <div class="nb-poll-opt-row" style="display:flex;gap:8px;margin-bottom:6px;">
-                                <input type="text" name="poll_options[]" value="<?php echo htmlspecialchars($opt); ?>" placeholder="Option text" style="flex:1;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
+                                <input type="text" name="poll_options[]" value="<?php echo htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8'); ?>" placeholder="Option text" style="flex:1;padding:7px 10px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">
                                 <button type="button" onclick="this.closest('.nb-poll-opt-row').remove()" class="nb-btn nb-btn-ghost nb-btn-sm" style="color:#ef4444;">&times;</button>
                             </div>
                         <?php endforeach; ?>
@@ -837,7 +837,7 @@ $now = date('Y-m-d H:i:s');
                     <?php
                     $results    = $n['poll_results'] ?? [];
                     $totalVotes = array_sum($results);
-                    $pollPanelId = 'nb-fakevote-' . $n['id'];
+                    $pollPanelId = 'nb-predefined-vote-' . $n['id'];
                     ?>
                     <div style="margin-top:8px;">
                         <div style="font-size:12px;font-weight:700;color:#64748b;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;display:flex;align-items:center;gap:6px;">
@@ -908,39 +908,37 @@ $now = date('Y-m-d H:i:s');
                             <div style="font-size:11px;color:#a16207;margin-bottom:10px;padding:6px;background:#fff;border-radius:5px;border:1px solid #fde68a;">No votes recorded yet.</div>
                             <?php endif; ?>
 
-                            <!-- Add predefined votes — one row per option -->
+                            <!-- Add predefined votes — one count input per option, keyed by base64(option) -->
                             <form method="post">
-                                <input type="hidden" name="fake_poll_notice_id" value="<?php echo (int)$n['id']; ?>">
+                                <input type="hidden" name="predefined_poll_notice_id" value="<?php echo (int)$n['id']; ?>">
+                                <input type="hidden" name="predefined_poll_vote" value="1">
                                 <div style="font-size:11px;font-weight:600;color:#78350f;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.04em;">Add Predefined Votes</div>
-                                <div style="margin-bottom:6px;">
-                                    <input type="text" name="fake_poll_label" placeholder='Label, e.g. "Early Adopters"'
+                                <div style="margin-bottom:8px;">
+                                    <input type="text" name="predefined_poll_label" placeholder='Label, e.g. "Early Adopters"'
                                         style="width:100%;box-sizing:border-box;font-size:12px;padding:5px 8px;border:1px solid #fcd34d;border-radius:5px;">
                                 </div>
-                                <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:8px;">
+                                <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
                                     <thead>
-                                        <tr>
-                                            <th style="text-align:left;padding:3px 4px;color:#78350f;font-weight:600;font-size:10px;text-transform:uppercase;">Option</th>
-                                            <th style="text-align:center;padding:3px 4px;color:#78350f;font-weight:600;font-size:10px;text-transform:uppercase;width:60px;">Votes</th>
+                                        <tr style="background:#fef3c7;">
+                                            <th style="text-align:left;padding:4px 6px;color:#78350f;font-weight:700;font-size:10px;text-transform:uppercase;border-bottom:1px solid #fde68a;">Option</th>
+                                            <th style="text-align:center;padding:4px 6px;color:#78350f;font-weight:700;font-size:10px;text-transform:uppercase;width:70px;border-bottom:1px solid #fde68a;">Add Votes</th>
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        <?php foreach ($n['poll_options'] as $optIdx => $opt): ?>
-                                        <tr style="border-top:1px solid #fde68a;">
-                                            <td style="padding:4px;">
-                                                <label style="display:flex;align-items:center;gap:5px;cursor:pointer;">
-                                                    <input type="checkbox" name="fake_poll_options[]" value="<?php echo htmlspecialchars($opt, ENT_QUOTES, 'UTF-8'); ?>" style="flex-shrink:0;">
-                                                    <span><?php echo htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8'); ?></span>
-                                                </label>
-                                            </td>
-                                            <td style="padding:4px;text-align:center;">
-                                                <input type="number" name="fake_poll_counts[<?php echo $optIdx; ?>]" value="1" min="0" max="9999"
-                                                    style="width:55px;font-size:12px;padding:3px 4px;border:1px solid #fcd34d;border-radius:4px;text-align:center;">
+                                        <?php foreach ($n['poll_options'] as $opt):
+                                            $optKey = base64_encode($opt);
+                                        ?>
+                                        <tr style="border-bottom:1px solid #fde68a;">
+                                            <td style="padding:5px 6px;font-size:12px;"><?php echo htmlspecialchars($opt, ENT_NOQUOTES, 'UTF-8'); ?></td>
+                                            <td style="padding:5px 6px;text-align:center;">
+                                                <input type="number" name="predefined_poll_counts[<?php echo $optKey; ?>]" value="0" min="0" max="9999"
+                                                    style="width:60px;font-size:12px;padding:3px 5px;border:1px solid #fcd34d;border-radius:4px;text-align:center;">
                                             </td>
                                         </tr>
                                         <?php endforeach; ?>
                                     </tbody>
                                 </table>
-                                <button type="submit" name="fake_poll_vote" value="1"
+                                <button type="submit"
                                     style="padding:5px 14px;border-radius:5px;background:#f59e0b;color:#fff;font-weight:700;border:none;cursor:pointer;font-size:12px;">+ Apply Predefined Votes</button>
                             </form>
                         </div>
@@ -1057,34 +1055,34 @@ $now = date('Y-m-d H:i:s');
                         <div style="font-size:12px;color:#94a3b8;text-align:center;padding:6px 0;">No acknowledgements yet.</div>
                     <?php endif; ?>
 
-                    <!-- Add fake acknowledgement -->
+                    <!-- Add predefined acknowledgement -->
                     <div style="margin-top:10px;padding-top:8px;border-top:1px solid #e2e8f0;">
                         <div style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px;">+ Add Acknowledgement</div>
                         <form method="post">
-                            <input type="hidden" name="add_fake_ack" value="1">
-                            <input type="hidden" name="fake_ack_notice_id" value="<?php echo (int)$n['id']; ?>">
+                            <input type="hidden" name="add_predefined_ack" value="1">
+                            <input type="hidden" name="predefined_ack_notice_id" value="<?php echo (int)$n['id']; ?>">
                             <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;">
                                 <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-                                    <input type="radio" name="fake_ack_type" value="admin" checked onchange="nbToggleFakeAckList(<?php echo (int)$n['id']; ?>,this.value)"> 👤 Admin
+                                    <input type="radio" name="predefined_ack_type" value="admin" checked onchange="nbToggleAckList(<?php echo (int)$n['id']; ?>,this.value)"> 👤 Admin
                                 </label>
                                 <label style="display:flex;align-items:center;gap:4px;font-size:12px;cursor:pointer;">
-                                    <input type="radio" name="fake_ack_type" value="client" onchange="nbToggleFakeAckList(<?php echo (int)$n['id']; ?>,this.value)"> 🌐 Client
+                                    <input type="radio" name="predefined_ack_type" value="client" onchange="nbToggleAckList(<?php echo (int)$n['id']; ?>,this.value)"> 🌐 Client
                                 </label>
                             </div>
                             <!-- Admin list -->
-                            <div id="nb-fake-admin-<?php echo (int)$n['id']; ?>">
-                                <select name="fake_ack_entities[]" multiple style="width:100%;height:80px;border:1px solid #cbd5e1;border-radius:6px;padding:3px;font-size:12px;">
+                            <div id="nb-predefined-admin-<?php echo (int)$n['id']; ?>">
+                                <select name="predefined_ack_entities[]" multiple style="width:100%;height:80px;border:1px solid #cbd5e1;border-radius:6px;padding:3px;font-size:12px;">
                                     <?php foreach ($admins as $a): ?>
                                         <option value="<?php echo (int)$a->id; ?>"><?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?></option>
                                     <?php endforeach; ?>
                                 </select>
                             </div>
                             <!-- Client search (lazy) -->
-                            <div id="nb-fake-client-<?php echo (int)$n['id']; ?>" style="display:none;">
+                            <div id="nb-predefined-client-<?php echo (int)$n['id']; ?>" style="display:none;">
                                 <div style="font-size:11px;color:#94a3b8;margin-bottom:4px;">Search and select clients below:</div>
                                 <input type="text" placeholder="Search clients…" style="width:100%;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;margin-bottom:4px;"
-                                    oninput="nbFakeClientSearch(this,<?php echo (int)$n['id']; ?>)">
-                                <select id="nb-fake-client-sel-<?php echo (int)$n['id']; ?>" name="fake_ack_entities[]" multiple style="width:100%;height:80px;border:1px solid #cbd5e1;border-radius:6px;padding:3px;font-size:12px;display:none;"></select>
+                                    oninput="nbPredefinedClientSearch(this,<?php echo (int)$n['id']; ?>)">
+                                <select id="nb-predefined-client-sel-<?php echo (int)$n['id']; ?>" name="predefined_ack_entities[]" multiple style="width:100%;height:80px;border:1px solid #cbd5e1;border-radius:6px;padding:3px;font-size:12px;display:none;"></select>
                             </div>
                             <button type="submit" class="nb-btn nb-btn-success nb-btn-sm" style="margin-top:6px;width:100%;">Add</button>
                         </form>
@@ -1457,18 +1455,18 @@ function nbRemoveClient(id) {
     if (chip) chip.remove();
 }
 
-// ── Fake acknowledgement panel helpers ───────────────────────────────────────
-function nbToggleFakeAckList(noticeId, type) {
-    document.getElementById('nb-fake-admin-'  + noticeId).style.display = type === 'admin'  ? 'block' : 'none';
-    document.getElementById('nb-fake-client-' + noticeId).style.display = type === 'client' ? 'block' : 'none';
+// ── Predefined acknowledgement panel helpers ─────────────────────────────────
+function nbToggleAckList(noticeId, type) {
+    document.getElementById('nb-predefined-admin-'  + noticeId).style.display = type === 'admin'  ? 'block' : 'none';
+    document.getElementById('nb-predefined-client-' + noticeId).style.display = type === 'client' ? 'block' : 'none';
 }
-var nbFakeClientTimers = {};
-function nbFakeClientSearch(inp, noticeId) {
-    clearTimeout(nbFakeClientTimers[noticeId]);
+var nbPredefinedClientTimers = {};
+function nbPredefinedClientSearch(inp, noticeId) {
+    clearTimeout(nbPredefinedClientTimers[noticeId]);
     var val = inp.value;
-    var sel = document.getElementById('nb-fake-client-sel-' + noticeId);
+    var sel = document.getElementById('nb-predefined-client-sel-' + noticeId);
     if (val.length < 2) { sel.style.display = 'none'; return; }
-    nbFakeClientTimers[noticeId] = setTimeout(function() {
+    nbPredefinedClientTimers[noticeId] = setTimeout(function() {
         var fd = new FormData();
         fd.append('nb_client_search', val);
         fetch(window.location.href, { method: 'POST', body: fd, credentials: 'same-origin' })
