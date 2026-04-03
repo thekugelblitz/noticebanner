@@ -19,7 +19,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
     protected $title              = 'Notice Banner';
     protected $description        = 'Manage and preview notices.';
     protected $weight             = 150;
-    protected $columns            = 1;
+    protected $columns            = 2;
     protected $cache              = false;
     protected $requiredPermission = 'Addon Modules';
 
