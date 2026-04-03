@@ -13,6 +13,11 @@
  *
  * HostingSpell default API host (grey cloud): whmcsapi.hostingspell.com — already set in license.php;
  * only use this override file if you host the API elsewhere.
+ *
+ * If the license API uses a self-signed certificate and auto-retry still fails, you can force:
+ *   define('NB_LICENSE_SSL_VERIFY_PEER', false);
+ * (Prefer installing Let’s Encrypt on the API vhost instead.)
  */
 
 // define('NB_LICENSE_API_URL', 'https://whmcsapi.hostingspell.com/api/validate.php');
+// define('NB_LICENSE_SSL_VERIFY_PEER', false);

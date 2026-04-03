@@ -178,9 +178,25 @@ function noticebanner_license_is_cloudflare_challenge(string $raw, int $httpCode
 }
 }
 
-if (!function_exists('noticebanner_license_curl_post_json')) {
+if (!function_exists('noticebanner_license_curl_ssl_recoverable')) {
+function noticebanner_license_curl_ssl_recoverable(int $errno, string $cerr): bool {
+    if ($errno === 60) {
+        return true;
+    } // SSL certificate problem
+    if ($errno === 77 || $errno === 58 || $errno === 59) {
+        return true;
+    } // cert / engine issues (platform-dependent)
+    $e = strtolower($cerr);
+    return (stripos($e, 'ssl certificate problem') !== false)
+        || (stripos($e, 'self-signed') !== false)
+        || (stripos($e, 'unable to verify') !== false)
+        || (stripos($e, 'certificate verify failed') !== false);
+}
+}
+
+if (!function_exists('noticebanner_license_curl_post_json_once')) {
 /** @return array{raw:string,http_code:int,errno:int,cerror:string,user_agent:string} */
-function noticebanner_license_curl_post_json(string $url, string $body, string $userAgent): array {
+function noticebanner_license_curl_post_json_once(string $url, string $body, string $userAgent, bool $verifyPeer): array {
     $headers = [
         'Content-Type: application/json',
         'Content-Length: ' . strlen($body),
@@ -199,8 +215,8 @@ function noticebanner_license_curl_post_json(string $url, string $body, string $
         CURLOPT_CONNECTTIMEOUT => 10,
         CURLOPT_TIMEOUT        => 15,
         CURLOPT_HTTPHEADER     => $headers,
-        CURLOPT_SSL_VERIFYPEER => true,
-        CURLOPT_SSL_VERIFYHOST => 2,
+        CURLOPT_SSL_VERIFYPEER => $verifyPeer,
+        CURLOPT_SSL_VERIFYHOST => $verifyPeer ? 2 : 0,
         CURLOPT_FOLLOWLOCATION => true,
         CURLOPT_MAXREDIRS      => 3,
     ]);
@@ -217,6 +233,30 @@ function noticebanner_license_curl_post_json(string $url, string $body, string $
         'cerror'      => $cerr,
         'user_agent'  => $userAgent,
     ];
+}
+}
+
+if (!function_exists('noticebanner_license_curl_post_json')) {
+/**
+ * POST via cURL; retries with verify_peer=off if certificate is self-signed / untrusted (unless NB_LICENSE_SSL_VERIFY_PEER is already false).
+ * @return array{raw:string,http_code:int,errno:int,cerror:string,user_agent:string,ssl_verify_relaxed:bool}
+ */
+function noticebanner_license_curl_post_json(string $url, string $body, string $userAgent): array {
+    if (!NB_LICENSE_SSL_VERIFY_PEER) {
+        $r = noticebanner_license_curl_post_json_once($url, $body, $userAgent, false);
+        $r['ssl_verify_relaxed'] = true;
+        return $r;
+    }
+
+    $r = noticebanner_license_curl_post_json_once($url, $body, $userAgent, true);
+    $relaxed = false;
+    if ($r['errno'] && noticebanner_license_curl_ssl_recoverable($r['errno'], $r['cerror'])) {
+        $r = noticebanner_license_curl_post_json_once($url, $body, $userAgent, false);
+        $relaxed = true;
+    }
+
+    $r['ssl_verify_relaxed'] = $relaxed;
+    return $r;
 }
 }
 
@@ -239,6 +279,7 @@ function noticebanner_license_http_post_json(string $url, array $payload): array
         'decoded'             => null,
         'cloudflare_hint'     => '',
         'retry_note'          => '',
+        'ssl_note'            => '',
     ];
 
     if (function_exists('curl_init')) {
@@ -248,6 +289,9 @@ function noticebanner_license_http_post_json(string $url, array $payload): array
 
         $r = noticebanner_license_curl_post_json($url, $body, $uaModule);
         $out['http_code'] = $r['http_code'];
+        if (!empty($r['ssl_verify_relaxed'])) {
+            $out['ssl_note'] = 'TLS peer verification was skipped for this request (self-signed / untrusted cert on the license API host, or NB_LICENSE_SSL_VERIFY_PEER is false). Prefer Let’s Encrypt on whmcsapi.hostingspell.com.';
+        }
         if ($r['errno']) {
             $out['error'] = 'cURL error ' . $r['errno'] . ': ' . $r['cerror'];
             $out['raw']   = '';
@@ -260,6 +304,9 @@ function noticebanner_license_http_post_json(string $url, array $payload): array
             $out['cloudflare_hint'] = 'Cloudflare bot/challenge page detected (not valid JSON). '
                 . 'Allow this path in Cloudflare or use a DNS-only API hostname — see noticebanner-license-url.example.php and CLOUDFLARE.txt on the license server.';
             $r2 = noticebanner_license_curl_post_json($url, $body, $uaBrowser);
+            if (!empty($r2['ssl_verify_relaxed'])) {
+                $out['ssl_note'] = 'TLS peer verification was skipped for this request (self-signed / untrusted cert on the license API host, or NB_LICENSE_SSL_VERIFY_PEER is false). Prefer Let’s Encrypt on whmcsapi.hostingspell.com.';
+            }
             if (!$r2['errno'] && $r2['raw'] !== '') {
                 $dec2 = json_decode($r2['raw'], true);
                 if (is_array($dec2)) {
@@ -280,13 +327,22 @@ function noticebanner_license_http_post_json(string $url, array $payload): array
     } elseif (filter_var(ini_get('allow_url_fopen'), FILTER_VALIDATE_BOOLEAN)) {
         $out['transport'] = 'file_get_contents';
         try {
-            $ctx = stream_context_create(['http' => [
-                'method'        => 'POST',
-                'header'        => "Content-Type: application/json\r\nContent-Length: " . strlen($body) . "\r\nUser-Agent: NoticeBanner-WHMCS/3.1.0\r\n",
-                'content'       => $body,
-                'timeout'       => 15,
-                'ignore_errors' => true,
-            ]]);
+            $ssl = [];
+            if (!NB_LICENSE_SSL_VERIFY_PEER) {
+                $ssl['verify_peer'] = false;
+                $ssl['verify_peer_name'] = false;
+                $out['ssl_note'] = 'TLS peer verification disabled (NB_LICENSE_SSL_VERIFY_PEER = false).';
+            }
+            $ctx = stream_context_create([
+                'http' => [
+                    'method'        => 'POST',
+                    'header'        => "Content-Type: application/json\r\nContent-Length: " . strlen($body) . "\r\nUser-Agent: NoticeBanner-WHMCS/3.1.0\r\n",
+                    'content'       => $body,
+                    'timeout'       => 15,
+                    'ignore_errors' => true,
+                ],
+                'ssl'  => $ssl,
+            ]);
             $raw = @file_get_contents($url, false, $ctx);
             if ($raw === false) {
                 $out['error'] = 'file_get_contents failed (check SSL, DNS, and firewall outbound to port 443).';
@@ -337,6 +393,9 @@ function noticebanner_license_debug_format(array $dbg): string {
     ];
     if (!empty($dbg['retry_note'])) {
         $lines[] = 'Retry:            ' . $dbg['retry_note'];
+    }
+    if (!empty($dbg['ssl_note'])) {
+        $lines[] = 'TLS:              ' . $dbg['ssl_note'];
     }
     if (!empty($dbg['cloudflare_hint'])) {
         $lines[] = '>>> ' . $dbg['cloudflare_hint'];

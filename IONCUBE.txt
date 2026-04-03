@@ -37,6 +37,14 @@ Customer servers MUST be able to reach this URL over HTTPS (port 443).
 Optional override: copy noticebanner-license-url.example.php to
 noticebanner-license-url.php in the module folder and define NB_LICENSE_API_URL.
 
+Self-signed TLS on the license API
+----------------------------------
+If the license API presents a self-signed certificate, the module retries the
+HTTPS request once with peer verification disabled so validation can succeed.
+For production, use a trusted certificate (e.g. Let’s Encrypt) on
+whmcsapi.hostingspell.com. Optional: define NB_LICENSE_SSL_VERIFY_PEER as false
+in noticebanner-license-url.php (see noticebanner-license-url.example.php).
+
 Cloudflare on the license host
 ------------------------------
 If the hostname is proxied through Cloudflare and returns a “Just a moment…”
