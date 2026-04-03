@@ -25,6 +25,10 @@ define('NB_LICENSE_PRODUCT',     'noticebanner-whmcs');
 if (!defined('NB_LICENSE_API_URL')) {
     define('NB_LICENSE_API_URL', 'https://whmcsapi.hostingspell.com/api/validate.php');
 }
+// Optional in noticebanner-license-url.php: define('NB_LICENSE_SSL_VERIFY_PEER', false);
+if (!defined('NB_LICENSE_SSL_VERIFY_PEER')) {
+    define('NB_LICENSE_SSL_VERIFY_PEER', true);
+}
 define('NB_LICENSE_CACHE_HOURS', 24);  // re-check every 24 h
 define('NB_LICENSE_GRACE_HOURS', 72);  // keep Pro for 72 h if API unreachable
 define('NB_LICENSE_FREE_CAP',    3);   // default free cap if API hasn't responded yet
