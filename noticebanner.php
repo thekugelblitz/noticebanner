@@ -2253,11 +2253,24 @@ function noticebanner_output($vars) {
                 $message = '<div class="nb-alert nb-alert-danger">Banner title is required.</div>';
             } else {
                 try {
+                    $existingBanner = \WHMCS\Database\Capsule::table('mod_noticebanner')
+                        ->where('id', $bannerId)
+                        ->where('is_todo_banner', 1)
+                        ->first();
+                    if (!$existingBanner) {
+                        throw new \RuntimeException('To-Do banner not found');
+                    }
+                    $bgIn = trim((string)($_POST['todo_banner_edit_bg_color'] ?? ''));
+                    $fgIn = trim((string)($_POST['todo_banner_edit_font_color'] ?? ''));
+                    $bgOut = preg_match('/^#[0-9A-Fa-f]{6}$/', $bgIn) ? $bgIn : (string)($existingBanner->bg_color ?? '#e0f2fe');
+                    $fgOut = preg_match('/^#[0-9A-Fa-f]{6}$/', $fgIn) ? $fgIn : (string)($existingBanner->font_color ?? '#0f172a');
                     \WHMCS\Database\Capsule::table('mod_noticebanner')
                         ->where('id', $bannerId)
                         ->where('is_todo_banner', 1)
                         ->update([
                             'notice_title'    => $title,
+                            'bg_color'        => $bgOut,
+                            'font_color'      => $fgOut,
                             'show_to_admins'  => $visibleAdmins,
                             'show_to_clients' => 0,
                             'assigned_admins' => json_encode($assignedAdmins),

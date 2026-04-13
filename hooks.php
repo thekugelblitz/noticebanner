@@ -226,6 +226,8 @@ details.nb-todo-banner-outer > summary::-webkit-details-marker{display:none;}
 details.nb-todo-banner-outer > summary.nb-todo-banner-outer-sum::before{content:"▸";flex-shrink:0;font-size:11px;opacity:0.55;line-height:1.5;margin-top:3px;}
 details.nb-todo-banner-outer[open] > summary.nb-todo-banner-outer-sum::before{content:"▾";}
 .nb-todo-banner-outer-meta{font-size:12px;font-weight:600;opacity:0.65;}
+details.nb-todo-banner-outer:not([open]) .nb-todo-fold-hint-col{display:none;}
+details.nb-todo-banner-outer[open] .nb-todo-fold-hint-exp{display:none;}
 .nb-todo-banner-outer-body{padding-top:8px;margin-top:4px;border-top:1px solid rgba(15,23,42,0.08);}
 </style>';
         }
@@ -565,18 +567,6 @@ alert((d&&d.message)||"Could not update task");
             ];
             [$bg, $fg, $label] = $map[$priority] ?? $map['normal'];
             return '<span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:11px;font-weight:700;background:' . $bg . ';color:' . $fg . ';margin-left:8px;vertical-align:middle;">' . $label . '</span>';
-        }
-
-        /** Muted priority chip so banner bg/font colors stay primary (To-Do banners). */
-        private static function priorityBadgeSoft(string $priority): string {
-            $map = [
-                'critical' => 'Critical',
-                'high'     => 'High',
-                'normal'   => 'Normal',
-                'low'      => 'Low',
-            ];
-            $label = $map[$priority] ?? $map['normal'];
-            return '<span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:11px;font-weight:700;background:rgba(15,23,42,0.08);color:inherit;opacity:0.88;margin-left:8px;vertical-align:middle;">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>';
         }
 
         /** Left stripe color derived from banner background (notice “Background” picker), not per-task accents. */
@@ -1231,7 +1221,7 @@ alert((d&&d.message)||"Could not update task");
                         . '</div>'
                     : '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">'
                         . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
-                        . (!empty($n['is_todo_banner']) ? self::priorityBadgeSoft($priority) : self::priorityBadge($priority))
+                        . (empty($n['is_todo_banner']) ? self::priorityBadge($priority) : '')
                         . $pinnedHtml
                         . $tsHtml
                         . '</div>';
@@ -1239,7 +1229,8 @@ alert((d&&d.message)||"Could not update task");
                 $todoMetaHtml = '';
                 if ($todoOuterCollapse) {
                     $hint = $todoTaskCount === 0 ? 'Empty' : ($todoTaskCount === 1 ? '1 task' : $todoTaskCount . ' tasks');
-                    $todoMetaHtml = '<span class="nb-todo-banner-outer-meta"> · ' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8') . ' · Click to expand</span>';
+                    $todoMetaHtml = '<span class="nb-todo-banner-outer-meta"> · ' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8')
+                        . ' · <span class="nb-todo-fold-hint-exp">Click to expand</span><span class="nb-todo-fold-hint-col">Click to collapse</span></span>';
                 }
 
                 $dismissBtn = '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" '

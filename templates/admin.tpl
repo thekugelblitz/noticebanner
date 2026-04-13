@@ -242,6 +242,12 @@ $now = date('Y-m-d H:i:s');
 .nb-todo-details > summary::-webkit-details-marker { display: none; }
 .nb-todo-details-body { padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .nb-todo-composer-v2 { border: 1px dashed #c7d2fe; border-radius: 12px; padding: 12px 14px; background: #fff; margin-bottom: 16px; }
+details.nb-todo-add-fold { border: 1px dashed #c7d2fe; border-radius: 12px; background: #fff; margin-bottom: 16px; overflow: hidden; }
+details.nb-todo-add-fold > summary.nb-todo-add-fold-sum { list-style: none; cursor: pointer; padding: 12px 14px; font-weight: 800; font-size: 13px; color: #6366f1; text-transform: uppercase; letter-spacing: 0.06em; user-select: none; }
+details.nb-todo-add-fold > summary::-webkit-details-marker { display: none; }
+details.nb-todo-add-fold > summary.nb-todo-add-fold-sum::before { content: '▸ '; font-size: 11px; opacity: 0.55; }
+details.nb-todo-add-fold[open] > summary.nb-todo-add-fold-sum::before { content: '▾ '; }
+.nb-todo-add-fold-body { padding: 0 14px 14px; border-top: 1px solid #f1f5f9; }
 .nb-todo-flat-list { display: flex; flex-direction: column; gap: 14px; }
 details.nb-todo-flat-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,0.05); }
 .nb-todo-flat-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,0.05); }
@@ -1920,6 +1926,36 @@ try {
                             <p style="margin:0 0 10px 0;font-size:12px;color:#64748b;line-height:1.5;">
                                 The <strong>admin banner body</strong> is built automatically from your tasks (checklist markdown). Edit tasks in the cards below — no separate description field, so the live banner cannot get out of sync.
                             </p>
+                            <?php $nbSelBg = htmlspecialchars($selectedBanner['bg_color'] ?? '#e0f2fe', ENT_QUOTES, 'UTF-8'); $nbSelFg = htmlspecialchars($selectedBanner['font_color'] ?? '#0f172a', ENT_QUOTES, 'UTF-8'); ?>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+                                <div class="nb-field" style="margin:0;">
+                                    <label>Banner background</label>
+                                    <div style="display:flex;gap:8px;align-items:center;">
+                                        <input type="color" id="nb-todo-bedit-bg-pick" value="<?php echo $nbSelBg; ?>" style="width:44px;height:32px;padding:0;border:1px solid #e2e8f0;border-radius:6px;" title="Pick color" aria-label="Banner background">
+                                        <input type="text" name="todo_banner_edit_bg_color" id="nb-todo-bedit-bg" value="<?php echo $nbSelBg; ?>" pattern="#[0-9A-Fa-f]{6}" style="flex:1;font-family:monospace;font-size:12px;" title="Hex color">
+                                    </div>
+                                </div>
+                                <div class="nb-field" style="margin:0;">
+                                    <label>Banner text</label>
+                                    <div style="display:flex;gap:8px;align-items:center;">
+                                        <input type="color" id="nb-todo-bedit-fg-pick" value="<?php echo $nbSelFg; ?>" style="width:44px;height:32px;padding:0;border:1px solid #e2e8f0;border-radius:6px;" title="Pick color" aria-label="Banner text">
+                                        <input type="text" name="todo_banner_edit_font_color" id="nb-todo-bedit-fg" value="<?php echo $nbSelFg; ?>" pattern="#[0-9A-Fa-f]{6}" style="flex:1;font-family:monospace;font-size:12px;" title="Hex color">
+                                    </div>
+                                </div>
+                            </div>
+                            <script>
+                            (function(){
+                                function pair(pickId, textId){
+                                    var p=document.getElementById(pickId),t=document.getElementById(textId);
+                                    if(!p||!t)return;
+                                    p.addEventListener('input',function(){t.value=p.value;});
+                                    t.addEventListener('change',function(){if(/^#[0-9A-Fa-f]{6}$/.test(t.value.trim()))p.value=t.value.trim();});
+                                }
+                                pair('nb-todo-bedit-bg-pick','nb-todo-bedit-bg');
+                                pair('nb-todo-bedit-fg-pick','nb-todo-bedit-fg');
+                            })();
+                            </script>
+                            <p style="margin:0 0 10px 0;font-size:11px;color:#94a3b8;">These colors apply to the <strong>live admin banner</strong> strip (not individual task rows).</p>
                             <div class="nb-field" style="margin:0 0 8px 0;">
                                 <label>Tagged admins</label>
                                 <?php $selAdmins = array_map('intval', $selectedBanner['assigned_admins'] ?? []); ?>
@@ -1941,8 +1977,9 @@ try {
                         </form>
                     </div>
 
-                    <div class="nb-todo-composer-v2">
-                        <div class="nb-todo-composer-title" style="margin-bottom:8px;">Add task</div>
+                    <details class="nb-todo-add-fold">
+                        <summary class="nb-todo-add-fold-sum">Add task <span style="font-size:12px;font-weight:600;color:#94a3b8;text-transform:none;letter-spacing:0;">— click to expand</span></summary>
+                        <div class="nb-todo-add-fold-body">
                         <form method="post" class="nb-grid nb-todo-ajax-form" style="grid-template-columns:1fr 1fr;gap:10px;align-items:end;">
                             <input type="hidden" name="nb_todo_action" value="add">
                             <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBanner['id']; ?>">
@@ -1970,10 +2007,6 @@ try {
                                 </select>
                             </div>
                             <div class="nb-field" style="margin:0;">
-                                <label>Accent color</label>
-                                <input type="color" name="todo_accent_color" value="#2563eb" title="Optional; leave default for urgency color">
-                            </div>
-                            <div class="nb-field" style="margin:0;">
                                 <label>Tags (comma-separated)</label>
                                 <input type="text" name="todo_tags" placeholder="billing, follow-up">
                             </div>
@@ -1990,7 +2023,8 @@ try {
                                 <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add task</button>
                             </div>
                         </form>
-                    </div>
+                        </div>
+                    </details>
 
                     <?php if (empty($parentTodoRows)): ?>
                         <p style="color:#94a3b8;font-size:14px;margin:0;">No tasks yet. Add one above. On any admin page, the live banner uses the same checklist — click the circle to mark done without opening this screen.</p>
@@ -2004,7 +2038,6 @@ try {
                         $sumTitle = $tw !== '' ? (function_exists('mb_strimwidth') ? mb_strimwidth($tw, 0, 72, '…', 'UTF-8') : substr($tw, 0, 70)) : 'Task';
                         $tu_display = (isset($todo['urgency']) && in_array($todo['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $todo['urgency'] : 'normal';
                         $subsOpen = count(array_filter($subs, static fn($x) => empty($x['is_completed'])));
-                        $t_acc_val = !empty($todo['accent_color']) ? (string)$todo['accent_color'] : (function_exists('noticebanner_todo_urgency_default_hex') ? noticebanner_todo_urgency_default_hex($tu_display) : '#2563eb');
                         $t_sel_ass = array_map('intval', $todo['assigned_admins'] ?? []);
                         ?>
                         <details open class="nb-todo-flat-block nb-todo-task-fold">
@@ -2055,10 +2088,6 @@ try {
                                                         <option value="<?php echo $uk; ?>" <?php echo $tu_display === $uk ? 'selected' : ''; ?>><?php echo htmlspecialchars($ul); ?></option>
                                                     <?php endforeach; ?>
                                                 </select>
-                                            </div>
-                                            <div class="nb-field" style="margin:0;">
-                                                <label style="font-size:12px;">Accent</label>
-                                                <input type="color" name="todo_accent_color" value="<?php echo htmlspecialchars($t_acc_val); ?>">
                                             </div>
                                             <div class="nb-field" style="margin:0;">
                                                 <label style="font-size:12px;">Tags</label>
@@ -2112,7 +2141,6 @@ try {
                             <?php
                             $sid = (int)$sub['id'];
                             $su_urg = (isset($sub['urgency']) && in_array($sub['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $sub['urgency'] : 'normal';
-                            $su_acc = !empty($sub['accent_color']) ? (string)$sub['accent_color'] : (function_exists('noticebanner_todo_urgency_default_hex') ? noticebanner_todo_urgency_default_hex($su_urg) : '#2563eb');
                             $su_sel = array_map('intval', $sub['assigned_admins'] ?? []);
                             ?>
                             <div class="nb-todo-flat-row nb-todo-flat-sub">
@@ -2154,10 +2182,6 @@ try {
                                                         <option value="<?php echo $uk; ?>" <?php echo $su_urg === $uk ? 'selected' : ''; ?>><?php echo htmlspecialchars($ul); ?></option>
                                                     <?php endforeach; ?>
                                                 </select>
-                                            </div>
-                                            <div class="nb-field" style="margin:0;">
-                                                <label style="font-size:12px;">Accent</label>
-                                                <input type="color" name="todo_accent_color" value="<?php echo htmlspecialchars($su_acc); ?>">
                                             </div>
                                             <div class="nb-field" style="margin:0;">
                                                 <label style="font-size:12px;">Tags</label>
