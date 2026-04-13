@@ -53,12 +53,32 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         $todoOpen = 0;
         $todoDueSoon = 0;
         try {
-            $todoOpen = (int)Capsule::table('mod_noticebanner_todos')->where('is_completed', 0)->count();
-            $todoDueSoon = (int)Capsule::table('mod_noticebanner_todos')
-                ->where('is_completed', 0)
-                ->whereNotNull('due_at')
-                ->where('due_at', '<=', date('Y-m-d H:i:s', strtotime('+48 hours')))
-                ->count();
+            $nbPath = dirname(__FILE__) . '/noticebanner.php';
+            if (is_file($nbPath)) {
+                require_once $nbPath;
+            }
+            $aid = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : 0;
+            if ($aid > 0 && function_exists('noticebanner_filter_todo_flat_rows_for_admin') && function_exists('noticebanner_get_todos_flat')) {
+                $openRows = noticebanner_filter_todo_flat_rows_for_admin(noticebanner_get_todos_flat(['status' => 'open']), $aid);
+                $todoOpen = count($openRows);
+                $soon = 0;
+                foreach ($openRows as $r) {
+                    if (empty($r['due_at'])) {
+                        continue;
+                    }
+                    if (strtotime((string)$r['due_at']) <= strtotime('+48 hours')) {
+                        $soon++;
+                    }
+                }
+                $todoDueSoon = $soon;
+            } else {
+                $todoOpen = (int)Capsule::table('mod_noticebanner_todos')->where('is_completed', 0)->count();
+                $todoDueSoon = (int)Capsule::table('mod_noticebanner_todos')
+                    ->where('is_completed', 0)
+                    ->whereNotNull('due_at')
+                    ->where('due_at', '<=', date('Y-m-d H:i:s', strtotime('+48 hours')))
+                    ->count();
+            }
         } catch (\Exception $e) {}
         return ['notices' => $notices, 'todo_open' => $todoOpen, 'todo_due_soon' => $todoDueSoon];
     }

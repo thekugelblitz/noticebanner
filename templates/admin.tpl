@@ -243,7 +243,16 @@ $now = date('Y-m-d H:i:s');
 .nb-todo-details-body { padding-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .nb-todo-composer-v2 { border: 1px dashed #c7d2fe; border-radius: 12px; padding: 12px 14px; background: #fff; margin-bottom: 16px; }
 .nb-todo-flat-list { display: flex; flex-direction: column; gap: 14px; }
+details.nb-todo-flat-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,0.05); }
 .nb-todo-flat-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,0.05); }
+details.nb-todo-task-fold > summary.nb-todo-task-fold-sum { list-style: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; cursor: pointer; font-weight: 800; font-size: 14px; color: #0f172a; padding: 6px 4px 12px 4px; margin: -4px -4px 4px -4px; border-bottom: 1px solid #f1f5f9; user-select: none; }
+details.nb-todo-task-fold > summary::-webkit-details-marker { display: none; }
+details.nb-todo-task-fold > summary::before { content: '▾ '; font-size: 11px; opacity: 0.55; }
+details.nb-todo-task-fold:not([open]) > summary::before { content: '▸ '; }
+.nb-todo-task-fold-hint { font-size: 12px; font-weight: 600; color: #94a3b8; margin-left: auto; }
+.nb-todo-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
+@media (max-width: 720px) { .nb-todo-meta-grid { grid-template-columns: 1fr; } }
+.nb-todo-assign-multi { min-height: 72px; width: 100%; }
 .nb-todo-flat-row { display: grid; grid-template-columns: auto 1fr; gap: 10px 12px; align-items: start; margin-bottom: 12px; }
 .nb-todo-flat-row:last-child { margin-bottom: 0; }
 .nb-todo-flat-row.nb-todo-flat-sub { margin-left: 8px; padding-left: 12px; border-left: 3px solid #e0e7ff; }
@@ -1572,7 +1581,7 @@ try {
                         <div>
                             <h3 class="nb-todo-banner-title"><?php echo htmlspecialchars($selectedBanner['notice_title']); ?></h3>
                             <p class="nb-todo-banner-sub" style="margin:6px 0 0 0;">
-                                <?php echo count($parentTodoOpen); ?> open · <?php echo count($parentTodoDone); ?> done
+                                <span id="nb-todo-board-counts"><?php echo count($parentTodoOpen); ?> open · <?php echo count($parentTodoDone); ?> done</span>
                                 <span style="color:#94a3b8;"> — On any admin page, click the circle on the banner to check items off (no need to open this tab).</span>
                             </p>
                             <?php if (!empty($selectedBanner['assigned_admins'])): ?>
@@ -1628,12 +1637,12 @@ try {
 
                     <div class="nb-todo-composer-v2">
                         <div class="nb-todo-composer-title" style="margin-bottom:8px;">Add task</div>
-                        <form method="post" class="nb-grid" style="grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
+                        <form method="post" class="nb-grid nb-todo-ajax-form" style="grid-template-columns:1fr 1fr;gap:10px;align-items:end;">
                             <input type="hidden" name="nb_todo_action" value="add">
                             <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBanner['id']; ?>">
                             <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
                             <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
-                            <div class="nb-field" style="margin:0;">
+                            <div class="nb-field nb-span2" style="margin:0;">
                                 <label>Title</label>
                                 <input type="text" name="todo_title" required placeholder="Task title">
                             </div>
@@ -1645,7 +1654,35 @@ try {
                                 <label>Note</label>
                                 <input type="text" name="todo_remarks" placeholder="Optional">
                             </div>
-                            <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add</button>
+                            <div class="nb-field" style="margin:0;">
+                                <label>Urgency</label>
+                                <select name="todo_urgency">
+                                    <option value="low">Low</option>
+                                    <option value="normal" selected>Normal</option>
+                                    <option value="high">High</option>
+                                    <option value="critical">Critical</option>
+                                </select>
+                            </div>
+                            <div class="nb-field" style="margin:0;">
+                                <label>Accent color</label>
+                                <input type="color" name="todo_accent_color" value="#2563eb" title="Optional; leave default for urgency color">
+                            </div>
+                            <div class="nb-field" style="margin:0;">
+                                <label>Tags (comma-separated)</label>
+                                <input type="text" name="todo_tags" placeholder="billing, follow-up">
+                            </div>
+                            <div class="nb-field nb-span2" style="margin:0;">
+                                <label>Assign to admins (optional)</label>
+                                <select name="todo_assigned_admins[]" multiple class="nb-todo-assign-multi">
+                                    <?php foreach ($admins as $a): ?>
+                                        <option value="<?php echo (int)$a->id; ?>"><?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <span style="font-size:11px;color:#94a3b8;">If set, only these admins see and edit this task.</span>
+                            </div>
+                            <div style="grid-column:1/-1;">
+                                <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add task</button>
+                            </div>
                         </form>
                     </div>
 
@@ -1657,10 +1694,24 @@ try {
                         <?php
                         $tid = (int)$todo['id'];
                         $subs = $childTodosByParent[$tid] ?? [];
+                        $tw = isset($todo['title']) ? trim((string)$todo['title']) : '';
+                        $sumTitle = $tw !== '' ? (function_exists('mb_strimwidth') ? mb_strimwidth($tw, 0, 72, '…', 'UTF-8') : substr($tw, 0, 70)) : 'Task';
+                        $tu_display = (isset($todo['urgency']) && in_array($todo['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $todo['urgency'] : 'normal';
+                        $subsOpen = count(array_filter($subs, static fn($x) => empty($x['is_completed'])));
+                        $t_acc_val = !empty($todo['accent_color']) ? (string)$todo['accent_color'] : (function_exists('noticebanner_todo_urgency_default_hex') ? noticebanner_todo_urgency_default_hex($tu_display) : '#2563eb');
+                        $t_sel_ass = array_map('intval', $todo['assigned_admins'] ?? []);
                         ?>
-                        <div class="nb-todo-flat-block">
+                        <details open class="nb-todo-flat-block nb-todo-task-fold">
+                            <summary class="nb-todo-task-fold-sum">
+                                <span><?php echo htmlspecialchars($sumTitle); ?></span>
+                                <?php if ($tu_display !== 'normal'): ?>
+                                    <span class="nb-priority" style="color:<?php echo $priorityConfig[$tu_display]['color'] ?? '#2563eb'; ?>;background:<?php echo $priorityConfig[$tu_display]['bg'] ?? '#eff6ff'; ?>;"><?php echo htmlspecialchars($priorityConfig[$tu_display]['label'] ?? $tu_display); ?></span>
+                                <?php endif; ?>
+                                <span class="nb-todo-task-fold-hint"><?php echo count($subs); ?> sub · <?php echo (int)$subsOpen; ?> open</span>
+                            </summary>
+                            <div class="nb-todo-task-fold-body">
                             <div class="nb-todo-flat-row">
-                                <form method="post" class="nb-todo-flat-toggle">
+                                <form method="post" class="nb-todo-flat-toggle nb-todo-ajax-form">
                                     <input type="hidden" name="nb_todo_action" value="toggle">
                                     <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
                                     <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
@@ -1673,7 +1724,7 @@ try {
                                 </form>
                                 <div class="nb-todo-flat-main">
                                     <div class="nb-todo-flat-meta">Task</div>
-                                    <form method="post" class="nb-todo-flat-savegrid">
+                                    <form method="post" class="nb-todo-flat-savegrid nb-todo-ajax-form">
                                         <input type="hidden" name="nb_todo_action" value="save_todo_row">
                                         <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
                                         <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
@@ -1681,6 +1732,32 @@ try {
                                         <div class="nb-field" style="margin:0;">
                                             <label style="font-size:12px;">Title</label>
                                             <input type="text" name="todo_title" required value="<?php echo htmlspecialchars($todo['title'] ?? ''); ?>">
+                                        </div>
+                                        <div class="nb-todo-meta-grid">
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Assignees</label>
+                                                <select name="todo_assigned_admins[]" multiple class="nb-todo-assign-multi">
+                                                    <?php foreach ($admins as $a): ?>
+                                                        <option value="<?php echo (int)$a->id; ?>" <?php echo in_array((int)$a->id, $t_sel_ass, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Urgency</label>
+                                                <select name="todo_urgency">
+                                                    <?php foreach (['low' => 'Low', 'normal' => 'Normal', 'high' => 'High', 'critical' => 'Critical'] as $uk => $ul): ?>
+                                                        <option value="<?php echo $uk; ?>" <?php echo $tu_display === $uk ? 'selected' : ''; ?>><?php echo htmlspecialchars($ul); ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Accent</label>
+                                                <input type="color" name="todo_accent_color" value="<?php echo htmlspecialchars($t_acc_val); ?>">
+                                            </div>
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Tags</label>
+                                                <input type="text" name="todo_tags" value="<?php echo htmlspecialchars($todo['tags'] ?? ''); ?>" placeholder="comma, separated">
+                                            </div>
                                         </div>
                                         <details class="nb-todo-note-details">
                                             <summary>Note<?php echo trim((string)($todo['remarks'] ?? '')) !== '' ? ' (has text)' : ''; ?></summary>
@@ -1698,7 +1775,7 @@ try {
                                         </div>
                                     </form>
                                     <div class="nb-todo-flat-actions">
-                                        <form method="post" style="display:inline;">
+                                        <form method="post" class="nb-todo-ajax-form" style="display:inline;">
                                             <input type="hidden" name="nb_todo_action" value="reorder">
                                             <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
                                             <input type="hidden" name="todo_direction" value="up">
@@ -1706,7 +1783,7 @@ try {
                                             <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                                             <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Move up</button>
                                         </form>
-                                        <form method="post" style="display:inline;">
+                                        <form method="post" class="nb-todo-ajax-form" style="display:inline;">
                                             <input type="hidden" name="nb_todo_action" value="reorder">
                                             <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
                                             <input type="hidden" name="todo_direction" value="down">
@@ -1714,7 +1791,7 @@ try {
                                             <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                                             <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Move down</button>
                                         </form>
-                                        <form method="post" style="display:inline;margin-left:auto;" onsubmit="return confirm('Delete this task and its subtasks?');">
+                                        <form method="post" class="nb-todo-ajax-form" style="display:inline;margin-left:auto;" onsubmit="return confirm('Delete this task and its subtasks?');">
                                             <input type="hidden" name="nb_todo_action" value="delete">
                                             <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
                                             <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
@@ -1726,9 +1803,14 @@ try {
                             </div>
 
                             <?php foreach ($subs as $sub): ?>
-                            <?php $sid = (int)$sub['id']; ?>
+                            <?php
+                            $sid = (int)$sub['id'];
+                            $su_urg = (isset($sub['urgency']) && in_array($sub['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $sub['urgency'] : 'normal';
+                            $su_acc = !empty($sub['accent_color']) ? (string)$sub['accent_color'] : (function_exists('noticebanner_todo_urgency_default_hex') ? noticebanner_todo_urgency_default_hex($su_urg) : '#2563eb');
+                            $su_sel = array_map('intval', $sub['assigned_admins'] ?? []);
+                            ?>
                             <div class="nb-todo-flat-row nb-todo-flat-sub">
-                                <form method="post" class="nb-todo-flat-toggle">
+                                <form method="post" class="nb-todo-flat-toggle nb-todo-ajax-form">
                                     <input type="hidden" name="nb_todo_action" value="toggle">
                                     <input type="hidden" name="todo_id" value="<?php echo $sid; ?>">
                                     <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
@@ -1741,7 +1823,7 @@ try {
                                 </form>
                                 <div class="nb-todo-flat-main">
                                     <div class="nb-todo-flat-meta">Subtask</div>
-                                    <form method="post" class="nb-todo-flat-savegrid">
+                                    <form method="post" class="nb-todo-flat-savegrid nb-todo-ajax-form">
                                         <input type="hidden" name="nb_todo_action" value="save_todo_row">
                                         <input type="hidden" name="todo_id" value="<?php echo $sid; ?>">
                                         <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
@@ -1749,6 +1831,32 @@ try {
                                         <div class="nb-field" style="margin:0;">
                                             <label style="font-size:12px;">Title</label>
                                             <input type="text" name="todo_title" required value="<?php echo htmlspecialchars($sub['title'] ?? ''); ?>">
+                                        </div>
+                                        <div class="nb-todo-meta-grid">
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Assignees</label>
+                                                <select name="todo_assigned_admins[]" multiple class="nb-todo-assign-multi">
+                                                    <?php foreach ($admins as $a): ?>
+                                                        <option value="<?php echo (int)$a->id; ?>" <?php echo in_array((int)$a->id, $su_sel, true) ? 'selected' : ''; ?>><?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Urgency</label>
+                                                <select name="todo_urgency">
+                                                    <?php foreach (['low' => 'Low', 'normal' => 'Normal', 'high' => 'High', 'critical' => 'Critical'] as $uk => $ul): ?>
+                                                        <option value="<?php echo $uk; ?>" <?php echo $su_urg === $uk ? 'selected' : ''; ?>><?php echo htmlspecialchars($ul); ?></option>
+                                                    <?php endforeach; ?>
+                                                </select>
+                                            </div>
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Accent</label>
+                                                <input type="color" name="todo_accent_color" value="<?php echo htmlspecialchars($su_acc); ?>">
+                                            </div>
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Tags</label>
+                                                <input type="text" name="todo_tags" value="<?php echo htmlspecialchars($sub['tags'] ?? ''); ?>" placeholder="comma, separated">
+                                            </div>
                                         </div>
                                         <details class="nb-todo-note-details">
                                             <summary>Note<?php echo trim((string)($sub['remarks'] ?? '')) !== '' ? ' (has text)' : ''; ?></summary>
@@ -1766,7 +1874,7 @@ try {
                                         </div>
                                     </form>
                                     <div class="nb-todo-flat-actions">
-                                        <form method="post" style="display:inline;">
+                                        <form method="post" class="nb-todo-ajax-form" style="display:inline;">
                                             <input type="hidden" name="nb_todo_action" value="reorder">
                                             <input type="hidden" name="todo_id" value="<?php echo $sid; ?>">
                                             <input type="hidden" name="todo_direction" value="up">
@@ -1774,7 +1882,7 @@ try {
                                             <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                                             <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Move up</button>
                                         </form>
-                                        <form method="post" style="display:inline;">
+                                        <form method="post" class="nb-todo-ajax-form" style="display:inline;">
                                             <input type="hidden" name="nb_todo_action" value="reorder">
                                             <input type="hidden" name="todo_id" value="<?php echo $sid; ?>">
                                             <input type="hidden" name="todo_direction" value="down">
@@ -1782,7 +1890,7 @@ try {
                                             <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                                             <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Move down</button>
                                         </form>
-                                        <form method="post" style="display:inline;margin-left:auto;" onsubmit="return confirm('Remove this subtask?');">
+                                        <form method="post" class="nb-todo-ajax-form" style="display:inline;margin-left:auto;" onsubmit="return confirm('Remove this subtask?');">
                                             <input type="hidden" name="nb_todo_action" value="delete">
                                             <input type="hidden" name="todo_id" value="<?php echo $sid; ?>">
                                             <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
@@ -1794,7 +1902,7 @@ try {
                             </div>
                             <?php endforeach; ?>
 
-                            <form method="post" class="nb-todo-flat-addsub">
+                            <form method="post" class="nb-todo-flat-addsub nb-todo-ajax-form">
                                 <input type="hidden" name="nb_todo_action" value="add">
                                 <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBanner['id']; ?>">
                                 <input type="hidden" name="todo_parent_todo_id" value="<?php echo $tid; ?>">
@@ -1810,7 +1918,8 @@ try {
                                 </div>
                                 <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="margin-top:22px;">Add subtask</button>
                             </form>
-                        </div>
+                            </div>
+                        </details>
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
@@ -1820,6 +1929,47 @@ try {
     </div>
 </div>
 </div><!-- /nb-pane-todo-banners -->
+<script>
+(function(){
+var pane = document.getElementById('nb-pane-todo-banners');
+if(!pane) return;
+pane.addEventListener('submit', function(e){
+var form = e.target;
+if(!form || form.tagName !== 'FORM' || !form.classList.contains('nb-todo-ajax-form')) return;
+e.preventDefault();
+var fd = new FormData(form);
+fd.append('nb_todo_ajax','1');
+var act = fd.get('nb_todo_action') || '';
+var url = form.getAttribute('action') || window.location.pathname + window.location.search;
+fetch(url, { method:'POST', body:fd, credentials:'same-origin', headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json'}})
+.then(function(r){ return r.json(); })
+.then(function(d){
+if(!d || !d.ok){ alert((d&&d.message)||'Request failed'); return; }
+if(typeof d.parent_open === 'number' && typeof d.parent_done === 'number'){
+var el = document.getElementById('nb-todo-board-counts');
+if(el) el.textContent = d.parent_open + ' open · ' + d.parent_done + ' done';
+}
+if(act === 'add'){ window.location.reload(); return; }
+if(act === 'toggle'){
+var btn = form.querySelector('.nb-todo-ring-btn');
+if(btn && typeof d.is_completed === 'boolean'){
+if(d.is_completed){ btn.classList.add('nb-on'); btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'; }
+else { btn.classList.remove('nb-on'); btn.innerHTML = ''; }
+}
+return;
+}
+if(act === 'delete'){
+var details = form.closest('details.nb-todo-task-fold');
+var row = form.closest('.nb-todo-flat-row');
+if(row && row.classList.contains('nb-todo-flat-sub')){ row.parentNode.removeChild(row); }
+else if(details){ details.parentNode.removeChild(details); }
+return;
+}
+})
+.catch(function(){ alert('Network error'); });
+});
+})();
+</script>
 
 <!-- ══════════════════════════════════════════════════════════════════════════
      TAB PANE: LICENSE & SETTINGS

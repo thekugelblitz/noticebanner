@@ -123,6 +123,8 @@ if (!class_exists('NoticeBannerHelper')) {
                         $main = trim($dm[1]);
                         $dueLabel = trim($dm[2]);
                     }
+                    $main = trim((string) preg_replace('/\s*·\s*Tags:\s*.+$/u', '', $main));
+                    $main = trim((string) preg_replace('/\s*·\s*\[(?:Critical|High|Normal|Low)\]\s*$/iu', '', $main));
                     $blocks[] = [
                         'type'  => 'task',
                         'depth' => $depth,
@@ -207,6 +209,9 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-todo-banner-hit .nb-todo-cb{margin-top:2px;}
 .nb-todo-banner-hit:focus-visible{outline:2px solid #6366f1;outline-offset:2px;border-radius:4px;}
 .nb-todo-banner-live .nb-todo-row:hover{background:rgba(99,102,241,0.04);}
+.nb-todo-row-accent{border-left:4px solid var(--nb-todo-accent,#6366f1);padding-left:10px;margin:6px 0;border-radius:8px;}
+.nb-todo-urg-pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.07);color:rgba(15,23,42,0.75);}
+.nb-todo-tag-pill{font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;background:rgba(99,102,241,0.12);color:#4338ca;margin-right:4px;}
 </style>';
         }
 
@@ -215,7 +220,7 @@ if (!class_exists('NoticeBannerHelper')) {
             if ($noticeId <= 0 || !function_exists('noticebanner_get_todos_for_notice')) {
                 return self::parseTodoBannerBody('');
             }
-            $tree = noticebanner_get_todos_for_notice($noticeId);
+            $tree = noticebanner_get_todos_for_notice($noticeId, self::currentAdminId());
             if (empty($tree)) {
                 return '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>';
             }
@@ -233,9 +238,30 @@ if (!class_exists('NoticeBannerHelper')) {
             $titleRaw = (string)($task['title'] ?? '');
             $title = htmlspecialchars($titleRaw, ENT_QUOTES, 'UTF-8');
             $title = preg_replace('/@([\w.-]+)/u', '<span class="nb-todo-at">@$1</span>', $title);
+            $urgency = function_exists('noticebanner_normalize_todo_urgency')
+                ? noticebanner_normalize_todo_urgency((string)($task['urgency'] ?? 'normal'))
+                : 'normal';
+            $accent = !empty($task['accent_color'])
+                ? (string)$task['accent_color']
+                : (function_exists('noticebanner_todo_urgency_default_hex') ? noticebanner_todo_urgency_default_hex($urgency) : '#2563eb');
+            $accentEsc = htmlspecialchars($accent, ENT_QUOTES, 'UTF-8');
             $dueHtml = '';
             if (!empty($task['due_at'])) {
                 $dueHtml = '<span class="nb-todo-due-pill">' . htmlspecialchars(date('M j, Y g:ia', strtotime($task['due_at'])), ENT_QUOTES, 'UTF-8') . '</span>';
+            }
+            $urgHtml = '';
+            if ($urgency !== 'normal') {
+                $urgHtml = '<span class="nb-todo-urg-pill">' . htmlspecialchars(ucfirst($urgency), ENT_QUOTES, 'UTF-8') . '</span>';
+            }
+            $tagsHtml = '';
+            $tagsRaw = trim((string)($task['tags'] ?? ''));
+            if ($tagsRaw !== '') {
+                foreach (array_map('trim', explode(',', $tagsRaw)) as $tg) {
+                    if ($tg === '') {
+                        continue;
+                    }
+                    $tagsHtml .= '<span class="nb-todo-tag-pill">' . htmlspecialchars($tg, ENT_QUOTES, 'UTF-8') . '</span>';
+                }
             }
             $remarks = trim((string)($task['remarks'] ?? ''));
             $noteHtml = $remarks !== ''
@@ -246,9 +272,11 @@ if (!class_exists('NoticeBannerHelper')) {
                 : '<span class="nb-todo-cb nb-todo-cb-open" aria-hidden="true"></span>';
             $btn = '<button type="button" class="nb-todo-banner-hit" onclick="nbBannerTodoToggle(this,' . $id . ')" title="Toggle done">' . $cbInner . '</button>';
             $d = min(4, $depth);
-            $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
-            $row = '<div class="' . $cls . '">' . $btn . '<div class="nb-todo-row-main">'
+            $cls = 'nb-todo-row nb-todo-row-accent nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
+            $metaLine = ($urgHtml !== '' || $tagsHtml !== '') ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $urgHtml . $tagsHtml . '</div>' : '';
+            $row = '<div class="' . $cls . '" style="--nb-todo-accent:' . $accentEsc . ';border-left-color:' . $accentEsc . ';">' . $btn . '<div class="nb-todo-row-main">'
                 . '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . '</div>'
+                . $metaLine
                 . $noteHtml . '</div></div>';
             $sub = '';
             if (!empty($task['children']) && is_array($task['children'])) {
@@ -271,10 +299,23 @@ fd.append("todo_id",String(todoId));
 fetch(window.location.href,{method:"POST",body:fd,credentials:"same-origin",headers:{"X-Requested-With":"XMLHttpRequest","Accept":"application/json"}})
 .then(function(r){return r.json();})
 .then(function(d){
-if(d&&d.ok){window.location.reload();}
-else{alert((d&&d.message)||"Could not update task");btn.dataset.nbLoading="";}
+btn.dataset.nbLoading="";
+if(d&&d.ok){
+var row=btn.closest(".nb-todo-row");
+var done=!!d.is_completed;
+if(row){
+if(done){row.classList.add("nb-todo-row-done");}else{row.classList.remove("nb-todo-row-done");}
+}
+if(done){
+btn.innerHTML="<span class=\\"nb-todo-cb nb-todo-cb-done\\" aria-hidden=\\"true\\"><svg width=\\"11\\" height=\\"11\\" viewBox=\\"0 0 24 24\\" fill=\\"none\\" stroke=\\"currentColor\\" stroke-width=\\"3\\"><polyline points=\\"20 6 9 17 4 12\\"/></svg></span>";
+}else{
+btn.innerHTML="<span class=\\"nb-todo-cb nb-todo-cb-open\\" aria-hidden=\\"true\\"></span>";
+}
+}else{
+alert((d&&d.message)||"Could not update task");
+}
 })
-.catch(function(){alert("Network error");btn.dataset.nbLoading="";});
+.catch(function(){btn.dataset.nbLoading="";alert("Network error");});
 }
 }
 </script>';
