@@ -220,6 +220,42 @@ function noticebanner_ensure_columns() {
                 $table->index(['notice_id'], 'idx_nb_poll_notice');
             });
         }
+
+        if (!$schema->hasTable('mod_noticebanner_todos')) {
+            $schema->create('mod_noticebanner_todos', function ($table) {
+                $table->increments('id');
+                $table->unsignedInteger('notice_id');
+                $table->unsignedInteger('parent_todo_id')->nullable();
+                $table->string('title', 255);
+                $table->text('remarks')->nullable();
+                $table->tinyInteger('is_completed')->default(0);
+                $table->datetime('due_at')->nullable();
+                $table->datetime('completed_at')->nullable();
+                $table->unsignedInteger('created_by_admin_id')->nullable();
+                $table->unsignedInteger('completed_by_admin_id')->nullable();
+                $table->integer('sort_order')->default(0);
+                $table->timestamps();
+                $table->index(['notice_id'], 'idx_nb_todo_notice');
+                $table->index(['parent_todo_id'], 'idx_nb_todo_parent');
+                $table->index(['is_completed'], 'idx_nb_todo_completed');
+                $table->index(['due_at'], 'idx_nb_todo_due');
+                $table->index(['completed_at'], 'idx_nb_todo_completed_at');
+            });
+        }
+
+        if (!$schema->hasTable('mod_noticebanner_todo_history')) {
+            $schema->create('mod_noticebanner_todo_history', function ($table) {
+                $table->increments('id');
+                $table->unsignedInteger('todo_id');
+                $table->string('action', 40);
+                $table->unsignedInteger('admin_id')->nullable();
+                $table->text('old_value')->nullable();
+                $table->text('new_value')->nullable();
+                $table->timestamp('created_at')->useCurrent();
+                $table->index(['todo_id'], 'idx_nb_todo_hist_todo');
+                $table->index(['action'], 'idx_nb_todo_hist_action');
+            });
+        }
     } catch (\Exception $e) {}
 }
 }
@@ -777,6 +813,232 @@ function noticebanner_build_payload(): array {
 }
 }
 
+if (!function_exists('noticebanner_todo_add_history')) {
+function noticebanner_todo_add_history(int $todoId, string $action, $oldValue = null, $newValue = null): void {
+    try {
+        $adminId = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : null;
+        \WHMCS\Database\Capsule::table('mod_noticebanner_todo_history')->insert([
+            'todo_id'    => $todoId,
+            'action'     => $action,
+            'admin_id'   => $adminId,
+            'old_value'  => $oldValue === null ? null : json_encode($oldValue),
+            'new_value'  => $newValue === null ? null : json_encode($newValue),
+            'created_at' => date('Y-m-d H:i:s'),
+        ]);
+    } catch (\Exception $e) {}
+}
+}
+
+if (!function_exists('noticebanner_get_todo_notice_id')) {
+function noticebanner_get_todo_notice_id(int $todoId): int {
+    try {
+        $noticeId = (int)\WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->value('notice_id');
+        return $noticeId;
+    } catch (\Exception $e) {
+        return 0;
+    }
+}
+}
+
+if (!function_exists('noticebanner_delete_todo_recursive')) {
+function noticebanner_delete_todo_recursive(int $todoId): void {
+    try {
+        $children = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')
+            ->where('parent_todo_id', $todoId)
+            ->pluck('id');
+        foreach ($children as $childId) {
+            noticebanner_delete_todo_recursive((int)$childId);
+        }
+        \WHMCS\Database\Capsule::table('mod_noticebanner_todo_history')->where('todo_id', $todoId)->delete();
+        \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->delete();
+    } catch (\Exception $e) {}
+}
+}
+
+if (!function_exists('noticebanner_sync_parent_todo_completion')) {
+function noticebanner_sync_parent_todo_completion(int $parentTodoId, int $adminId = 0): void {
+    if ($parentTodoId <= 0) return;
+    try {
+        $parent = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $parentTodoId)->first();
+        if (!$parent) return;
+        $children = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')
+            ->where('parent_todo_id', $parentTodoId)
+            ->get(['id', 'is_completed'])
+            ->toArray();
+        if (empty($children)) return;
+
+        $allDone = true;
+        foreach ($children as $child) {
+            if (empty($child->is_completed)) {
+                $allDone = false;
+                break;
+            }
+        }
+
+        $shouldComplete = $allDone ? 1 : 0;
+        $current = (int)$parent->is_completed;
+        if ($current === $shouldComplete) return;
+
+        $completedAt = $shouldComplete ? date('Y-m-d H:i:s') : null;
+        \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $parentTodoId)->update([
+            'is_completed' => $shouldComplete,
+            'completed_at' => $completedAt,
+            'completed_by_admin_id' => $shouldComplete ? ($adminId > 0 ? $adminId : null) : null,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        noticebanner_todo_add_history($parentTodoId, $shouldComplete ? 'auto_checked_by_subtasks' : 'auto_unchecked_by_subtasks', ['is_completed' => $current], ['is_completed' => $shouldComplete]);
+        noticebanner_log((int)$parent->notice_id, $shouldComplete ? 'todo_parent_auto_checked' : 'todo_parent_auto_unchecked', (string)$parent->title);
+    } catch (\Exception $e) {}
+}
+}
+
+if (!function_exists('noticebanner_todo_status_bucket')) {
+function noticebanner_todo_status_bucket(array $todo): string {
+    if (!empty($todo['is_completed'])) {
+        return 'completed';
+    }
+    if (empty($todo['due_at'])) {
+        return 'open';
+    }
+    $today = date('Y-m-d');
+    $due = date('Y-m-d', strtotime((string)$todo['due_at']));
+    if ($due < $today) return 'overdue';
+    if ($due === $today) return 'due_today';
+    return 'upcoming';
+}
+}
+
+if (!function_exists('noticebanner_get_admin_name_map')) {
+function noticebanner_get_admin_name_map(array $ids): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    if (empty($ids)) return [];
+    try {
+        $rows = \WHMCS\Database\Capsule::table('tbladmins')
+            ->whereIn('id', $ids)
+            ->get(['id', 'firstname', 'lastname', 'username'])
+            ->toArray();
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(int)$r->id] = trim(($r->firstname ?? '') . ' ' . ($r->lastname ?? '')) . ' (@' . ($r->username ?? '') . ')';
+        }
+        return $map;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_notice_title_map')) {
+function noticebanner_get_notice_title_map(array $ids): array {
+    $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+    if (empty($ids)) return [];
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner')
+            ->whereIn('id', $ids)
+            ->get(['id', 'notice_title'])
+            ->toArray();
+        $map = [];
+        foreach ($rows as $r) {
+            $map[(int)$r->id] = (string)($r->notice_title ?? ('Notice #' . $r->id));
+        }
+        return $map;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_todos_for_notice')) {
+function noticebanner_get_todos_for_notice(int $noticeId): array {
+    if ($noticeId <= 0) return [];
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')
+            ->where('notice_id', $noticeId)
+            ->orderBy('parent_todo_id', 'asc')
+            ->orderBy('sort_order', 'asc')
+            ->orderBy('id', 'asc')
+            ->get()
+            ->toArray();
+        $todos = [];
+        foreach ($rows as $row) {
+            $item = (array)$row;
+            $item['id'] = (int)$item['id'];
+            $item['notice_id'] = (int)$item['notice_id'];
+            $item['parent_todo_id'] = $item['parent_todo_id'] ? (int)$item['parent_todo_id'] : null;
+            $item['is_completed'] = (int)$item['is_completed'];
+            $item['sort_order'] = (int)$item['sort_order'];
+            $item['children'] = [];
+            $item['status_bucket'] = noticebanner_todo_status_bucket($item);
+            $todos[$item['id']] = $item;
+        }
+        $tree = [];
+        foreach ($todos as $id => $todo) {
+            $parentId = $todo['parent_todo_id'];
+            if ($parentId && isset($todos[$parentId])) {
+                $todos[$parentId]['children'][] = $todo;
+                continue;
+            }
+            $tree[] = $todo;
+        }
+        return $tree;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_todos_flat')) {
+function noticebanner_get_todos_flat(array $filters = []): array {
+    try {
+        $q = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')
+            ->orderBy('is_completed', 'asc')
+            ->orderBy('due_at', 'asc')
+            ->orderBy('id', 'desc');
+
+        $noticeId = (int)($filters['notice_id'] ?? 0);
+        if ($noticeId > 0) $q->where('notice_id', $noticeId);
+
+        $status = trim((string)($filters['status'] ?? 'all'));
+        if ($status === 'completed') {
+            $q->where('is_completed', 1);
+        } elseif ($status === 'open') {
+            $q->where('is_completed', 0);
+        } elseif ($status === 'overdue') {
+            $q->where('is_completed', 0)->whereNotNull('due_at')->where('due_at', '<', date('Y-m-d 00:00:00'));
+        } elseif ($status === 'due_today') {
+            $q->where('is_completed', 0)->whereDate('due_at', '=', date('Y-m-d'));
+        }
+
+        $dueFrom = trim((string)($filters['due_from'] ?? ''));
+        $dueTo = trim((string)($filters['due_to'] ?? ''));
+        if ($dueFrom !== '') $q->where('due_at', '>=', date('Y-m-d 00:00:00', strtotime($dueFrom)));
+        if ($dueTo !== '') $q->where('due_at', '<=', date('Y-m-d 23:59:59', strtotime($dueTo)));
+
+        $completedFrom = trim((string)($filters['completed_from'] ?? ''));
+        $completedTo = trim((string)($filters['completed_to'] ?? ''));
+        if ($completedFrom !== '') $q->where('completed_at', '>=', date('Y-m-d 00:00:00', strtotime($completedFrom)));
+        if ($completedTo !== '') $q->where('completed_at', '<=', date('Y-m-d 23:59:59', strtotime($completedTo)));
+
+        $rows = $q->get()->toArray();
+        $out = [];
+        foreach ($rows as $row) {
+            $item = (array)$row;
+            $item['id'] = (int)$item['id'];
+            $item['notice_id'] = (int)$item['notice_id'];
+            $item['parent_todo_id'] = $item['parent_todo_id'] ? (int)$item['parent_todo_id'] : null;
+            $item['is_completed'] = (int)$item['is_completed'];
+            $item['created_by_admin_id'] = $item['created_by_admin_id'] ? (int)$item['created_by_admin_id'] : null;
+            $item['completed_by_admin_id'] = $item['completed_by_admin_id'] ? (int)$item['completed_by_admin_id'] : null;
+            $item['status_bucket'] = noticebanner_todo_status_bucket($item);
+            $out[] = $item;
+        }
+        return $out;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
 // ─── Admin Output ────────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_output')) {
@@ -909,6 +1171,150 @@ function noticebanner_output($vars) {
                 ];
             }
             echo json_encode($out);
+            exit;
+        }
+
+        // ── To-Do actions (admin only) ──
+        if (isset($_POST['nb_todo_action'])) {
+            $action = trim((string)$_POST['nb_todo_action']);
+            $isAjax = isset($_POST['nb_todo_ajax']) || !empty($_SERVER['HTTP_X_REQUESTED_WITH']);
+            $resp = ['ok' => false, 'message' => 'Invalid to-do request'];
+
+            try {
+                $adminId = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : 0;
+                if ($adminId <= 0) {
+                    throw new \RuntimeException('Admin login required');
+                }
+
+                if ($action === 'add') {
+                    $noticeId = (int)($_POST['todo_notice_id'] ?? 0);
+                    $parentTodoId = (int)($_POST['todo_parent_todo_id'] ?? 0);
+                    $title = trim((string)($_POST['todo_title'] ?? ''));
+                    $remarks = trim((string)($_POST['todo_remarks'] ?? ''));
+                    $dueAtRaw = trim((string)($_POST['todo_due_at'] ?? ''));
+                    if ($noticeId <= 0 || $title === '') {
+                        throw new \RuntimeException('Task title and notice are required');
+                    }
+                    $sortOrder = (int)\WHMCS\Database\Capsule::table('mod_noticebanner_todos')
+                        ->where('notice_id', $noticeId)
+                        ->where('parent_todo_id', $parentTodoId > 0 ? $parentTodoId : null)
+                        ->max('sort_order') + 1;
+                    $todoId = (int)\WHMCS\Database\Capsule::table('mod_noticebanner_todos')->insertGetId([
+                        'notice_id'            => $noticeId,
+                        'parent_todo_id'       => $parentTodoId > 0 ? $parentTodoId : null,
+                        'title'                => $title,
+                        'remarks'              => $remarks ?: null,
+                        'is_completed'         => 0,
+                        'due_at'               => $dueAtRaw !== '' ? date('Y-m-d H:i:s', strtotime($dueAtRaw)) : null,
+                        'completed_at'         => null,
+                        'created_by_admin_id'  => $adminId,
+                        'completed_by_admin_id'=> null,
+                        'sort_order'           => $sortOrder,
+                        'created_at'           => date('Y-m-d H:i:s'),
+                        'updated_at'           => date('Y-m-d H:i:s'),
+                    ]);
+                    noticebanner_todo_add_history($todoId, $parentTodoId > 0 ? 'subtask_created' : 'created', null, ['title' => $title]);
+                    noticebanner_log($noticeId, 'todo_created', ($parentTodoId > 0 ? 'Subtask: ' : 'Task: ') . $title);
+                    if ($parentTodoId > 0) {
+                        noticebanner_sync_parent_todo_completion($parentTodoId, $adminId);
+                    }
+                    $resp = ['ok' => true, 'message' => 'Task added'];
+                } elseif ($action === 'toggle') {
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) throw new \RuntimeException('Task not found');
+                    $newCompleted = $row->is_completed ? 0 : 1;
+                    $completedAt = $newCompleted ? date('Y-m-d H:i:s') : null;
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->update([
+                        'is_completed' => $newCompleted,
+                        'completed_at' => $completedAt,
+                        'completed_by_admin_id' => $newCompleted ? $adminId : null,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    noticebanner_todo_add_history($todoId, $newCompleted ? 'checked' : 'unchecked', ['is_completed' => (int)$row->is_completed], ['is_completed' => $newCompleted]);
+                    noticebanner_log((int)$row->notice_id, $newCompleted ? 'todo_checked' : 'todo_unchecked', $row->title);
+                    if (!empty($row->parent_todo_id)) {
+                        noticebanner_sync_parent_todo_completion((int)$row->parent_todo_id, $adminId);
+                    }
+                    $resp = ['ok' => true, 'message' => 'Task updated'];
+                } elseif ($action === 'update_due') {
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $dueAtRaw = trim((string)($_POST['todo_due_at'] ?? ''));
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) throw new \RuntimeException('Task not found');
+                    $newDue = $dueAtRaw !== '' ? date('Y-m-d H:i:s', strtotime($dueAtRaw)) : null;
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->update([
+                        'due_at' => $newDue,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    noticebanner_todo_add_history($todoId, 'duedate_changed', ['due_at' => $row->due_at], ['due_at' => $newDue]);
+                    noticebanner_log((int)$row->notice_id, 'todo_due_updated', $row->title);
+                    $resp = ['ok' => true, 'message' => 'Due date updated'];
+                } elseif ($action === 'update_remarks') {
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $remarks = trim((string)($_POST['todo_remarks'] ?? ''));
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) throw new \RuntimeException('Task not found');
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->update([
+                        'remarks' => $remarks !== '' ? $remarks : null,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+                    noticebanner_todo_add_history($todoId, 'remarked', ['remarks' => (string)$row->remarks], ['remarks' => $remarks]);
+                    noticebanner_log((int)$row->notice_id, 'todo_remarks_updated', $row->title);
+                    $resp = ['ok' => true, 'message' => 'Remarks updated'];
+                } elseif ($action === 'delete') {
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) throw new \RuntimeException('Task not found');
+                    $parentTodoId = (int)($row->parent_todo_id ?? 0);
+                    noticebanner_todo_add_history($todoId, 'deleted', ['title' => $row->title], null);
+                    noticebanner_delete_todo_recursive($todoId);
+                    noticebanner_log((int)$row->notice_id, 'todo_deleted', $row->title);
+                    if ($parentTodoId > 0) {
+                        noticebanner_sync_parent_todo_completion($parentTodoId, $adminId);
+                    }
+                    $resp = ['ok' => true, 'message' => 'Task deleted'];
+                } elseif ($action === 'reorder') {
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $direction = ($_POST['todo_direction'] ?? 'up') === 'down' ? 'down' : 'up';
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) throw new \RuntimeException('Task not found');
+                    $siblings = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')
+                        ->where('notice_id', (int)$row->notice_id)
+                        ->where('parent_todo_id', $row->parent_todo_id)
+                        ->orderBy('sort_order', 'asc')
+                        ->orderBy('id', 'asc')
+                        ->get(['id', 'sort_order'])
+                        ->toArray();
+                    $ids = array_map(fn($s) => (int)$s->id, $siblings);
+                    $pos = array_search($todoId, $ids, true);
+                    if ($pos !== false) {
+                        $swapPos = $direction === 'up' ? $pos - 1 : $pos + 1;
+                        if (isset($siblings[$swapPos])) {
+                            $currentSort = (int)$siblings[$pos]->sort_order;
+                            $targetSort = (int)$siblings[$swapPos]->sort_order;
+                            \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->update(['sort_order' => $targetSort]);
+                            \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', (int)$siblings[$swapPos]->id)->update(['sort_order' => $currentSort]);
+                            noticebanner_todo_add_history($todoId, 'reordered', ['sort_order' => $currentSort], ['sort_order' => $targetSort]);
+                        }
+                    }
+                    $resp = ['ok' => true, 'message' => 'Task reordered'];
+                }
+            } catch (\Throwable $e) {
+                $resp = ['ok' => false, 'message' => $e->getMessage()];
+            }
+
+            if ($isAjax) {
+                header('Content-Type: application/json');
+                echo json_encode($resp);
+                exit;
+            }
+            if (!empty($_POST['todo_redirect_notice_id'])) {
+                $nid = (int)$_POST['todo_redirect_notice_id'];
+                header('Location: addonmodules.php?module=noticebanner&todo_notice_id=' . $nid . '#nb-todos');
+                exit;
+            }
+            header('Location: ' . $_SERVER['REQUEST_URI']);
             exit;
         }
 
@@ -1339,6 +1745,25 @@ function noticebanner_output($vars) {
     $licenseStatus = noticebanner_license_status();
     $freeCap       = noticebanner_free_notice_cap();
     $activeCount   = (int)\WHMCS\Database\Capsule::table('mod_noticebanner')->where('is_template', 0)->count();
+    $todoFilters   = [
+        'notice_id'      => (int)($_GET['todo_notice_id'] ?? 0),
+        'status'         => trim((string)($_GET['todo_status'] ?? 'all')),
+        'due_from'       => trim((string)($_GET['todo_due_from'] ?? '')),
+        'due_to'         => trim((string)($_GET['todo_due_to'] ?? '')),
+        'completed_from' => trim((string)($_GET['todo_completed_from'] ?? '')),
+        'completed_to'   => trim((string)($_GET['todo_completed_to'] ?? '')),
+    ];
+    $todoRows = noticebanner_get_todos_flat($todoFilters);
+    $todoAdminIds = [];
+    $todoNoticeIds = [];
+    foreach ($todoRows as $row) {
+        $todoNoticeIds[] = (int)$row['notice_id'];
+        if (!empty($row['created_by_admin_id'])) $todoAdminIds[] = (int)$row['created_by_admin_id'];
+        if (!empty($row['completed_by_admin_id'])) $todoAdminIds[] = (int)$row['completed_by_admin_id'];
+    }
+    $todoAdminMap = noticebanner_get_admin_name_map($todoAdminIds);
+    $todoNoticeMap = noticebanner_get_notice_title_map($todoNoticeIds);
+    $editNoticeTodos = isset($edit_notice['id']) ? noticebanner_get_todos_for_notice((int)$edit_notice['id']) : [];
 
     include __DIR__ . '/templates/admin.tpl';
 }

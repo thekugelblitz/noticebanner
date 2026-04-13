@@ -200,6 +200,7 @@ $licBadgeLabel = $isPro ? '✓ Pro Active' : (($licStatus === 'no_key' || $licSt
         <span style="font-size:11px;font-weight:600;color:#854d0e;background:#fef9c3;border:1px solid #fde68a;border-radius:999px;padding:1px 7px;margin-left:4px;"><?php echo $activeCount; ?>/<?php echo $freeCap; ?></span>
         <?php endif; ?>
     </span>
+    <span class="nb-tab" onclick="nbMainTab('todos',this)">✅ To-Do</span>
     <span class="nb-tab" onclick="nbMainTab('license',this)">🔑 License &amp; Settings
         <span class="nb-lic-badge <?php echo $licBadgeClass; ?>" style="padding:1px 8px;font-size:11px;margin-left:4px;"><?php echo htmlspecialchars($licBadgeLabel); ?></span>
     </span>
@@ -719,6 +720,105 @@ $licBadgeLabel = $isPro ? '✓ Pro Active' : (($licStatus === 'no_key' || $licSt
                 </div>
             </div>
             <?php endif; // Pro: CTA/Ticket/Poll/Targeting/Webhook ?>
+
+            <?php if (isset($edit_notice) && !empty($edit_notice['id'])): ?>
+            <div style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
+                <div style="padding:10px 14px;background:#f8fafc;font-size:13px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.05em;">
+                    Notice To-Do List
+                </div>
+                <div style="padding:14px;">
+                    <form method="post" class="nb-todo-ajax" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
+                        <input type="hidden" name="nb_todo_action" value="add">
+                        <input type="hidden" name="todo_notice_id" value="<?php echo (int)$edit_notice['id']; ?>">
+                        <div class="nb-field" style="margin:0;">
+                            <label>Task title</label>
+                            <input type="text" name="todo_title" required placeholder="Write a task for this notice">
+                        </div>
+                        <div class="nb-field" style="margin:0;">
+                            <label>Due date</label>
+                            <input type="datetime-local" name="todo_due_at">
+                        </div>
+                        <div class="nb-field" style="margin:0;">
+                            <label>Remarks</label>
+                            <input type="text" name="todo_remarks" placeholder="Optional remark">
+                        </div>
+                        <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add Task</button>
+                    </form>
+
+                    <div style="margin-top:12px;">
+                        <?php if (empty($editNoticeTodos)): ?>
+                            <div style="font-size:13px;color:#94a3b8;">No tasks yet for this notice.</div>
+                        <?php else: ?>
+                            <?php foreach ($editNoticeTodos as $task): ?>
+                            <div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;background:#fff;">
+                                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                    <form method="post" class="nb-todo-ajax" style="display:inline;">
+                                        <input type="hidden" name="nb_todo_action" value="toggle">
+                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
+                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm"><?php echo !empty($task['is_completed']) ? '☑' : '☐'; ?></button>
+                                    </form>
+                                    <strong style="<?php echo !empty($task['is_completed']) ? 'text-decoration:line-through;color:#64748b;' : ''; ?>"><?php echo htmlspecialchars($task['title']); ?></strong>
+                                    <form method="post" class="nb-todo-ajax" style="display:inline-flex;gap:6px;align-items:center;">
+                                        <input type="hidden" name="nb_todo_action" value="update_due">
+                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
+                                        <input type="datetime-local" name="todo_due_at" value="<?php echo !empty($task['due_at']) ? date('Y-m-d\TH:i', strtotime($task['due_at'])) : ''; ?>" style="font-size:12px;">
+                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Save Due</button>
+                                    </form>
+                                    <form method="post" class="nb-todo-ajax" style="display:inline-flex;gap:5px;align-items:center;margin-left:auto;">
+                                        <input type="hidden" name="nb_todo_action" value="reorder">
+                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
+                                        <input type="hidden" name="todo_direction" value="up">
+                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">↑</button>
+                                    </form>
+                                    <form method="post" class="nb-todo-ajax" style="display:inline-flex;gap:5px;align-items:center;">
+                                        <input type="hidden" name="nb_todo_action" value="reorder">
+                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
+                                        <input type="hidden" name="todo_direction" value="down">
+                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">↓</button>
+                                    </form>
+                                    <form method="post" onsubmit="return confirm('Delete task and subtasks?');">
+                                        <input type="hidden" name="nb_todo_action" value="delete">
+                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
+                                        <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete</button>
+                                    </form>
+                                </div>
+                                <form method="post" class="nb-todo-ajax" style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                    <input type="hidden" name="nb_todo_action" value="update_remarks">
+                                    <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
+                                    <input type="text" name="todo_remarks" value="<?php echo htmlspecialchars($task['remarks'] ?? ''); ?>" placeholder="Add remarks..." style="flex:1;min-width:180px;">
+                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Save Remarks</button>
+                                </form>
+                                <form method="post" class="nb-todo-ajax" style="margin-top:8px;display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
+                                    <input type="hidden" name="nb_todo_action" value="add">
+                                    <input type="hidden" name="todo_notice_id" value="<?php echo (int)$edit_notice['id']; ?>">
+                                    <input type="hidden" name="todo_parent_todo_id" value="<?php echo (int)$task['id']; ?>">
+                                    <input type="text" name="todo_title" required placeholder="Add subtask">
+                                    <input type="datetime-local" name="todo_due_at">
+                                    <input type="text" name="todo_remarks" placeholder="Subtask remark">
+                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Add Subtask</button>
+                                </form>
+                                <?php if (!empty($task['children'])): ?>
+                                    <div style="margin-top:8px;padding-left:16px;border-left:2px solid #e2e8f0;">
+                                        <?php foreach ($task['children'] as $sub): ?>
+                                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
+                                                <form method="post" class="nb-todo-ajax" style="display:inline;">
+                                                    <input type="hidden" name="nb_todo_action" value="toggle">
+                                                    <input type="hidden" name="todo_id" value="<?php echo (int)$sub['id']; ?>">
+                                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm"><?php echo !empty($sub['is_completed']) ? '☑' : '☐'; ?></button>
+                                                </form>
+                                                <span style="<?php echo !empty($sub['is_completed']) ? 'text-decoration:line-through;color:#64748b;' : ''; ?>"><?php echo htmlspecialchars($sub['title']); ?></span>
+                                                <span style="font-size:11px;color:#94a3b8;"><?php echo !empty($sub['due_at']) ? 'Due: ' . date('M j, Y g:ia', strtotime($sub['due_at'])) : 'No due date'; ?></span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                <?php endif; ?>
+                            </div>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
 
             <div style="margin-top:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
                 <button type="submit" name="save_notice" class="nb-btn nb-btn-primary">
@@ -1284,6 +1384,128 @@ try {
 </div><!-- /nb-pane-notices -->
 
 <!-- ══════════════════════════════════════════════════════════════════════════
+     TAB PANE: TO-DO
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="nb-pane-todos" class="nb-main-tab-pane">
+<div class="nb-card">
+    <div class="nb-card-header">
+        <h2>✅ To-Do Manager</h2>
+        <span style="font-size:13px;color:#64748b;"><?php echo count($todoRows); ?> task<?php echo count($todoRows) === 1 ? '' : 's'; ?></span>
+    </div>
+    <div class="nb-card-body">
+        <form method="get" style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;">
+            <input type="hidden" name="module" value="noticebanner">
+            <div class="nb-field" style="margin:0;">
+                <label>Notice</label>
+                <select name="todo_notice_id">
+                    <option value="0">All notices</option>
+                    <?php foreach ($notices as $n): ?>
+                        <option value="<?php echo (int)$n['id']; ?>" <?php echo ((int)$todoFilters['notice_id'] === (int)$n['id']) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($n['notice_title']); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="nb-field" style="margin:0;">
+                <label>Status</label>
+                <select name="todo_status">
+                    <?php foreach (['all' => 'All', 'open' => 'Open', 'completed' => 'Completed', 'overdue' => 'Overdue', 'due_today' => 'Due Today'] as $k => $label): ?>
+                    <option value="<?php echo $k; ?>" <?php echo ($todoFilters['status'] === $k) ? 'selected' : ''; ?>><?php echo $label; ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="nb-field" style="margin:0;">
+                <label>Due from</label>
+                <input type="date" name="todo_due_from" value="<?php echo htmlspecialchars($todoFilters['due_from']); ?>">
+            </div>
+            <div class="nb-field" style="margin:0;">
+                <label>Due to</label>
+                <input type="date" name="todo_due_to" value="<?php echo htmlspecialchars($todoFilters['due_to']); ?>">
+            </div>
+            <div class="nb-field" style="margin:0;">
+                <label>Completed from</label>
+                <input type="date" name="todo_completed_from" value="<?php echo htmlspecialchars($todoFilters['completed_from']); ?>">
+            </div>
+            <div class="nb-field" style="margin:0;">
+                <label>Completed to</label>
+                <input type="date" name="todo_completed_to" value="<?php echo htmlspecialchars($todoFilters['completed_to']); ?>">
+            </div>
+            <div style="display:flex;gap:6px;">
+                <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Filter</button>
+                <a href="addonmodules.php?module=noticebanner#nb-todos" class="nb-btn nb-btn-ghost nb-btn-sm">Reset</a>
+            </div>
+        </form>
+
+        <?php if (empty($todoRows)): ?>
+            <div style="color:#94a3b8;font-size:14px;">No to-do entries match these filters.</div>
+        <?php else: ?>
+        <div style="overflow-x:auto;">
+            <table class="nb-log-table">
+                <thead>
+                    <tr>
+                        <th>Notice</th>
+                        <th>Task</th>
+                        <th>Due Date</th>
+                        <th>Completed Date</th>
+                        <th>Remarks</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <?php foreach ($todoRows as $todo): ?>
+                    <tr>
+                        <td><?php echo htmlspecialchars($todoNoticeMap[(int)$todo['notice_id']] ?? ('Notice #' . (int)$todo['notice_id'])); ?></td>
+                        <td>
+                            <?php if (!empty($todo['parent_todo_id'])): ?>
+                                <span style="color:#94a3b8;">↳ Subtask</span><br>
+                            <?php endif; ?>
+                            <strong><?php echo htmlspecialchars($todo['title']); ?></strong>
+                        </td>
+                        <td style="white-space:nowrap;"><?php echo !empty($todo['due_at']) ? date('M j, Y g:ia', strtotime($todo['due_at'])) : '—'; ?></td>
+                        <td style="white-space:nowrap;">
+                            <?php if (!empty($todo['completed_at'])): ?>
+                                <?php echo date('M j, Y g:ia', strtotime($todo['completed_at'])); ?><br>
+                                <span style="font-size:11px;color:#94a3b8;"><?php echo htmlspecialchars($todoAdminMap[(int)$todo['completed_by_admin_id']] ?? ''); ?></span>
+                            <?php else: ?>
+                                —
+                            <?php endif; ?>
+                        </td>
+                        <td style="max-width:260px;color:#475569;"><?php echo htmlspecialchars($todo['remarks'] ?? ''); ?></td>
+                        <td>
+                            <?php
+                            $bucket = $todo['status_bucket'] ?? 'open';
+                            $statusColor = '#64748b';
+                            if ($bucket === 'completed') $statusColor = '#166534';
+                            if ($bucket === 'overdue') $statusColor = '#991b1b';
+                            if ($bucket === 'due_today') $statusColor = '#b45309';
+                            if ($bucket === 'upcoming') $statusColor = '#1d4ed8';
+                            ?>
+                            <span style="font-weight:700;color:<?php echo $statusColor; ?>;"><?php echo htmlspecialchars(str_replace('_', ' ', ucfirst($bucket))); ?></span>
+                        </td>
+                        <td style="white-space:nowrap;">
+                            <form method="post" class="nb-todo-ajax" style="display:inline;">
+                                <input type="hidden" name="nb_todo_action" value="toggle">
+                                <input type="hidden" name="todo_id" value="<?php echo (int)$todo['id']; ?>">
+                                <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm"><?php echo !empty($todo['is_completed']) ? 'Uncheck' : 'Check'; ?></button>
+                            </form>
+                            <form method="post" style="display:inline;" onsubmit="return confirm('Delete task and nested subtasks?');">
+                                <input type="hidden" name="nb_todo_action" value="delete">
+                                <input type="hidden" name="todo_id" value="<?php echo (int)$todo['id']; ?>">
+                                <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete</button>
+                            </form>
+                        </td>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+</div><!-- /nb-pane-todos -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════
      TAB PANE: LICENSE & SETTINGS
 ══════════════════════════════════════════════════════════════════════════ -->
 <div id="nb-pane-license" class="nb-main-tab-pane">
@@ -1503,7 +1725,7 @@ $licLastError  = $licenseStatus['last_error'] ?? null;
 function nbMainTab(pane, el) {
     document.querySelectorAll('#nb-main-tabs .nb-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
-    ['notices','license','log'].forEach(function(p) {
+    ['notices','todos','license','log'].forEach(function(p) {
         var el2 = document.getElementById('nb-pane-' + p);
         if (el2) el2.classList.toggle('active', p === pane);
     });
@@ -1513,10 +1735,10 @@ function nbMainTab(pane, el) {
 // Restore tab from hash on load
 (function() {
     var h = window.location.hash;
-    var map = {'#nb-notices':'notices','#nb-license':'license','#nb-log':'log'};
+    var map = {'#nb-notices':'notices','#nb-todos':'todos','#nb-license':'license','#nb-log':'log'};
     if (map[h]) {
         var tabs = document.querySelectorAll('#nb-main-tabs .nb-tab');
-        var panes = ['notices','license','log'];
+        var panes = ['notices','todos','license','log'];
         panes.forEach(function(p, i) {
             var pEl = document.getElementById('nb-pane-' + p);
             if (pEl) pEl.classList.toggle('active', p === map[h]);
@@ -1524,6 +1746,31 @@ function nbMainTab(pane, el) {
         });
     }
 })();
+
+document.querySelectorAll('form.nb-todo-ajax').forEach(function(form) {
+    form.addEventListener('submit', function(ev) {
+        ev.preventDefault();
+        var fd = new FormData(form);
+        fd.append('nb_todo_ajax', '1');
+        fetch(window.location.href, {
+            method: 'POST',
+            body: fd,
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        })
+        .then(function(r){ return r.json(); })
+        .then(function(json){
+            if (!json || !json.ok) {
+                alert((json && json.message) ? json.message : 'Failed to update task');
+                return;
+            }
+            if (window.location.hash !== '#nb-todos') {
+                window.location.hash = '#nb-todos';
+            }
+            window.location.reload();
+        })
+        .catch(function(){ alert('Unable to update task right now.'); });
+    });
+});
 
 // ── Markdown editor tab switching ─────────────────────────────────────────────
 function nbShowTab(tab, el) {

@@ -50,7 +50,17 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
                 $notices[] = $n;
             }
         } catch (\Exception $e) {}
-        return ['notices' => $notices];
+        $todoOpen = 0;
+        $todoDueSoon = 0;
+        try {
+            $todoOpen = (int)Capsule::table('mod_noticebanner_todos')->where('is_completed', 0)->count();
+            $todoDueSoon = (int)Capsule::table('mod_noticebanner_todos')
+                ->where('is_completed', 0)
+                ->whereNotNull('due_at')
+                ->where('due_at', '<=', date('Y-m-d H:i:s', strtotime('+48 hours')))
+                ->count();
+        } catch (\Exception $e) {}
+        return ['notices' => $notices, 'todo_open' => $todoOpen, 'todo_due_soon' => $todoDueSoon];
     }
 
     // ── Resolve admin names ──────────────────────────────────────────────────
@@ -150,6 +160,8 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         $this->handlePost();
         $data    = $this->getData();
         $notices = $data['notices'];
+        $todoOpen = (int)($data['todo_open'] ?? 0);
+        $todoDueSoon = (int)($data['todo_due_soon'] ?? 0);
         $now     = date('Y-m-d H:i:s');
 
         $active   = array_values(array_filter($notices, fn($n) => !empty($n['show_to_admins']) || !empty($n['show_to_clients'])));
@@ -240,6 +252,17 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
             <div class="nbw-stat-num" style="color:#1e293b;"><?php echo count($notices); ?></div>
             <div class="nbw-stat-lbl" style="color:#94a3b8;">Total</div>
         </div>
+        <div class="nbw-stat" style="background:#eff6ff;border:1px solid #bfdbfe;">
+            <div class="nbw-stat-num" style="color:#1d4ed8;"><?php echo $todoOpen; ?></div>
+            <div class="nbw-stat-lbl" style="color:#1d4ed8;">Open Tasks</div>
+        </div>
+        <div class="nbw-stat" style="background:#fff7ed;border:1px solid #fed7aa;">
+            <div class="nbw-stat-num" style="color:#c2410c;"><?php echo $todoDueSoon; ?></div>
+            <div class="nbw-stat-lbl" style="color:#c2410c;">Due 48h</div>
+        </div>
+    </div>
+    <div style="margin:-4px 0 12px;display:flex;justify-content:flex-end;">
+        <a href="<?php echo $addonUrl; ?>#nb-todos" class="nbw-btn" style="background:#eef2ff;color:#4338ca;border-color:#c7d2fe;">To-Do Board →</a>
     </div>
 
     <!-- Active notices -->
