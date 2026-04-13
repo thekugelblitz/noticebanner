@@ -183,6 +183,12 @@ function noticebanner_ensure_columns() {
                 $table->text('target_servers')->nullable()->after('target_clients');
             if (!$schema->hasColumn('mod_noticebanner', 'target_products'))
                 $table->text('target_products')->nullable()->after('target_servers');
+            if (!$schema->hasColumn('mod_noticebanner', 'is_promotion_banner'))
+                $table->tinyInteger('is_promotion_banner')->default(0)->after('target_products');
+            if (!$schema->hasColumn('mod_noticebanner', 'promo_coupon_code'))
+                $table->string('promo_coupon_code', 120)->default('')->after('is_promotion_banner');
+            if (!$schema->hasColumn('mod_noticebanner', 'promo_template'))
+                $table->string('promo_template', 32)->default('gradient')->after('promo_coupon_code');
         });
 
         // mod_noticebanner_reads
@@ -775,7 +781,20 @@ function noticebanner_build_payload(): array {
         'priority'           => $_POST['priority'] ?? 'normal',
         'notice_timestamp'   => !empty($_POST['notice_timestamp']) ? date('Y-m-d H:i:s', strtotime($_POST['notice_timestamp'])) : null,
         'updated_at'         => date('Y-m-d H:i:s'),
+        'is_todo_banner'     => 0,
+        'is_promotion_banner'=> !empty($_POST['save_promotion']) ? 1 : 0,
     ];
+
+    $allowedPromoTpl = ['gradient', 'neon', 'ribbon', 'minimal', 'flash'];
+    $promoTpl = strtolower(trim((string)($_POST['promo_template'] ?? 'gradient')));
+    if (!in_array($promoTpl, $allowedPromoTpl, true)) {
+        $promoTpl = 'gradient';
+    }
+    $base['promo_coupon_code'] = trim((string)($_POST['promo_coupon_code'] ?? ''));
+    if (strlen($base['promo_coupon_code']) > 120) {
+        $base['promo_coupon_code'] = substr($base['promo_coupon_code'], 0, 120);
+    }
+    $base['promo_template'] = $promoTpl;
 
     // Pro-only fields — silently zeroed/nulled when not licensed
     $pro = $isPro ? [
@@ -830,7 +849,19 @@ function noticebanner_build_payload(): array {
         'is_pinned'            => 0,
     ];
 
-    return array_merge($base, $pro);
+    $out = array_merge($base, $pro);
+    // Saving a standard notice must not turn into a promotion (only explicit save_promotion sets the flag above)
+    if (empty($_POST['save_promotion'])) {
+        $out['is_promotion_banner'] = 0;
+        $out['promo_coupon_code'] = '';
+        $out['promo_template'] = 'gradient';
+    } else {
+        $out['is_todo_banner'] = 0;
+        $out['poll_enabled'] = 0;
+        $out['ticket_enabled'] = 0;
+    }
+
+    return $out;
 }
 }
 
@@ -1568,6 +1599,31 @@ function noticebanner_output($vars) {
                 $edit_notice['target_servers']  = json_decode($edit_notice['target_servers'] ?? '[]', true) ?: [];
                 $edit_notice['target_products'] = json_decode($edit_notice['target_products'] ?? '[]', true) ?: [];
                 $edit_notice['page_slugs']      = json_decode($edit_notice['page_slugs'] ?? '[]', true) ?: [];
+                if (!empty($edit_notice['is_promotion_banner'])) {
+                    $edit_notice = null;
+                }
+            }
+        }
+    }
+
+    $edit_promo = null;
+    if (!empty($_GET['edit_promo_id'])) {
+        $pid = (int)$_GET['edit_promo_id'];
+        if ($pid > 0) {
+            $prow = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $pid)->first();
+            if ($prow && !empty((int)$prow->is_promotion_banner)) {
+                $edit_promo = (array)$prow;
+                $edit_promo['poll_options']    = array_map('html_entity_decode', json_decode($edit_promo['poll_options'] ?? '[]', true) ?: []);
+                $rawRes = json_decode($edit_promo['poll_results'] ?? '{}', true) ?: [];
+                $decRes = [];
+                foreach ($rawRes as $k => $v) $decRes[html_entity_decode($k)] = $v;
+                $edit_promo['poll_results']    = $decRes;
+                $edit_promo['assigned_admins'] = json_decode($edit_promo['assigned_admins'] ?? '[]', true) ?: [];
+                $edit_promo['client_groups']   = json_decode($edit_promo['client_groups'] ?? '[]', true) ?: [];
+                $edit_promo['target_clients']  = json_decode($edit_promo['target_clients'] ?? '[]', true) ?: [];
+                $edit_promo['target_servers']  = json_decode($edit_promo['target_servers'] ?? '[]', true) ?: [];
+                $edit_promo['target_products'] = json_decode($edit_promo['target_products'] ?? '[]', true) ?: [];
+                $edit_promo['page_slugs']      = json_decode($edit_promo['page_slugs'] ?? '[]', true) ?: [];
             }
         }
     }
@@ -2209,7 +2265,7 @@ function noticebanner_output($vars) {
             }
         }
         // ── Save notice (add or edit) ──
-        if (isset($_POST['save_notice'])) {
+        if (isset($_POST['save_notice']) || isset($_POST['save_promotion'])) {
             $payload = noticebanner_build_payload();
             $editId  = (int)($_POST['edit_id'] ?? 0);
 
@@ -2263,6 +2319,7 @@ function noticebanner_output($vars) {
                 unset($copy['id']);
                 $copy['is_template']   = 1;
                 $copy['template_name'] = $tplName;
+                $copy['is_promotion_banner'] = 0;
                 $copy['show_to_admins']  = 0;
                 $copy['show_to_clients'] = 0;
                 $copy['created_at']    = date('Y-m-d H:i:s');
@@ -2361,7 +2418,7 @@ function noticebanner_output($vars) {
         elseif (isset($_POST['edit_load'])) {
             $id  = (int)$_POST['edit_load'];
             $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
-            if ($row) {
+            if ($row && empty((int)$row->is_promotion_banner)) {
                 $edit_notice = (array)$row;
                 $edit_notice['poll_options']    = array_map('html_entity_decode', json_decode($edit_notice['poll_options'] ?? '[]', true) ?: []);
                 $rawRes = json_decode($edit_notice['poll_results'] ?? '{}', true) ?: [];
@@ -2458,7 +2515,9 @@ function noticebanner_output($vars) {
         if (empty($assigned)) return true;
         return in_array($currentAdminId, array_map('intval', $assigned), true);
     }));
-    $notices = array_values(array_filter($notices, fn($n) => empty($n['is_todo_banner'])));
+    $nonTodo = array_values(array_filter($notices, fn($n) => empty($n['is_todo_banner'])));
+    $promoBanners = array_values(array_filter($nonTodo, fn($n) => !empty($n['is_promotion_banner'])));
+    $notices = array_values(array_filter($nonTodo, fn($n) => empty($n['is_promotion_banner'])));
     $todoBannerRange = trim((string)($_GET['todo_banner_range'] ?? '3m'));
     $todoBannerNoticeIds = [];
     try {

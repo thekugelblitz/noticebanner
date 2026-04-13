@@ -215,6 +215,115 @@ if (!class_exists('NoticeBannerHelper')) {
 </style>';
         }
 
+        /** Inline CSS for promotion / sale banners (injected once per page when needed). */
+        public static function promotionBannerStyles(): string {
+            return '<style id="nb-promo-banner-css">
+@keyframes nb-promo-shimmer{0%{background-position:0% 50%}100%{background-position:200% 50%}}
+.nb-promo-surface{border-radius:14px;padding:16px 18px;position:relative;overflow:hidden;max-width:880px;margin-left:auto;margin-right:auto;text-align:left;}
+.nb-promo-surface .nb-promo-headline{font-size:18px;font-weight:800;line-height:1.25;margin:0 0 8px;letter-spacing:-0.02em;}
+.nb-promo-surface .nb-promo-sub{font-size:14px;line-height:1.6;opacity:0.95;}
+.nb-promo-surface .nb-promo-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:14px;}
+.nb-promo-codebox{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,0.15);border:1px dashed rgba(255,255,255,0.45);border-radius:10px;padding:8px 12px;font-size:14px;font-weight:700;letter-spacing:0.04em;}
+.nb-promo-codebox.nb-promo-code-dark{background:rgba(15,23,42,0.08);border-color:rgba(15,23,42,0.15);}
+.nb-promo-copy{border:none;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer;background:rgba(255,255,255,0.95);color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,0.12);}
+.nb-promo-copy:hover{filter:brightness(1.05);}
+.nb-promo-cta{display:inline-flex;align-items:center;justify-content:center;padding:9px 20px;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;transition:transform .12s,box-shadow .12s;}
+.nb-promo-cta:hover{transform:translateY(-1px);}
+.nb-promo-gradient{color:#fff;background:linear-gradient(135deg,var(--nb-g1,#6366f1),var(--nb-g2,#a855f7));box-shadow:0 8px 28px rgba(99,102,241,0.35);}
+.nb-promo-neon{color:#e2e8f0;background:linear-gradient(165deg,#0f172a,#1e1b4b);border:2px solid #22d3ee;box-shadow:0 0 0 1px rgba(34,211,238,0.35),0 8px 32px rgba(34,211,238,0.15);}
+.nb-promo-neon .nb-promo-codebox{border-color:rgba(34,211,238,0.45);background:rgba(15,23,42,0.5);}
+.nb-promo-ribbon{color:#0f172a;background:linear-gradient(180deg,#fffbeb,#fef3c7);border:1px solid #fcd34d;box-shadow:0 6px 20px rgba(245,158,11,0.2);}
+.nb-promo-ribbon .nb-promo-ribbon-corner{position:absolute;top:0;right:0;width:0;height:0;border-style:solid;border-width:0 56px 56px 0;border-color:transparent #f59e0b transparent transparent;z-index:1;}
+.nb-promo-ribbon .nb-promo-ribbon-label{position:absolute;top:10px;right:6px;z-index:2;font-size:10px;font-weight:900;color:#fff;transform:rotate(45deg);transform-origin:center;text-transform:uppercase;letter-spacing:0.06em;}
+.nb-promo-minimal{color:var(--nb-m-fg,#1e293b);background:#fff;border:1px solid #e2e8f0;border-left:5px solid var(--nb-m-accent,#6366f1);box-shadow:0 4px 16px rgba(15,23,42,0.06);}
+.nb-promo-minimal .nb-promo-headline,.nb-promo-minimal .nb-promo-sub{color:var(--nb-m-fg,#1e293b);}
+.nb-promo-minimal .nb-promo-codebox.nb-promo-code-dark{background:#f8fafc;}
+.nb-promo-ribbon .nb-promo-headline,.nb-promo-ribbon .nb-promo-sub{color:#0f172a;}
+.nb-promo-flash{color:#fff;background:linear-gradient(90deg,#7c3aed,#6366f1,#ec4899,#6366f1,#7c3aed);background-size:200% 100%;animation:nb-promo-shimmer 4s ease-in-out infinite;box-shadow:0 8px 28px rgba(124,58,237,0.35);}
+</style>';
+        }
+
+        /**
+         * Rich promotion banner body: headline, markdown, optional coupon + CTA.
+         */
+        public static function renderPromotionBannerBody(array $n, string $area, bool $isPro): string {
+            $tpl = preg_replace('/[^a-z]/', '', strtolower((string)($n['promo_template'] ?? 'gradient')));
+            if ($tpl === '') {
+                $tpl = 'gradient';
+            }
+            $allowed = ['gradient', 'neon', 'ribbon', 'minimal', 'flash'];
+            if (!in_array($tpl, $allowed, true)) {
+                $tpl = 'gradient';
+            }
+
+            $bg = $n['bg_color'] ?: '#6366f1';
+            $fg = $n['font_color'] ?: '#ffffff';
+            $headline = htmlspecialchars($n['notice_title'] ?? '', ENT_QUOTES, 'UTF-8');
+            $sub = self::parseMarkdown($n['notice_content'] ?? '');
+            $code = trim((string)($n['promo_coupon_code'] ?? ''));
+            $codeEsc = htmlspecialchars($code, ENT_QUOTES, 'UTF-8');
+
+            $g2 = '#7c3aed';
+            if (preg_match('/^#[0-9A-Fa-f]{6}$/', (string)$bg)) {
+                $g2 = $bg;
+            }
+
+            $surfaceStyle = '';
+            if ($tpl === 'gradient') {
+                $surfaceStyle = ' style="--nb-g1:' . htmlspecialchars($bg, ENT_QUOTES, 'UTF-8') . ';--nb-g2:' . htmlspecialchars($g2, ENT_QUOTES, 'UTF-8') . '"';
+            } elseif ($tpl === 'minimal') {
+                $surfaceStyle = ' style="--nb-m-fg:' . htmlspecialchars($fg, ENT_QUOTES, 'UTF-8') . ';--nb-m-accent:' . htmlspecialchars($bg, ENT_QUOTES, 'UTF-8') . '"';
+            }
+
+            $codeRow = '';
+            if ($code !== '') {
+                $dark = ($tpl === 'minimal' || $tpl === 'ribbon') ? ' nb-promo-code-dark' : '';
+                $codeRow = '<div class="nb-promo-codebox' . $dark . '" role="group" aria-label="Coupon code">'
+                    . '<span style="opacity:0.85;font-size:12px;font-weight:600;">Code</span> '
+                    . '<span class="nb-promo-code-val">' . $codeEsc . '</span> '
+                    . '<button type="button" class="nb-promo-copy" data-nb-copy="' . $codeEsc . '" onclick="nbCopyPromoCode(this)">Copy</button>'
+                    . '</div>';
+            }
+
+            $cta = '';
+            if ($isPro && !empty($n['button_enabled']) && !empty($n['button_text']) && !empty($n['button_link'])) {
+                $target = !empty($n['button_newtab']) ? ' target="_blank" rel="noopener noreferrer"' : '';
+                $cta = '<a class="nb-promo-cta" href="' . htmlspecialchars($n['button_link'], ENT_QUOTES, 'UTF-8') . '"' . $target
+                    . ' style="background:' . htmlspecialchars($n['button_bg'] ?? '#fff', ENT_QUOTES, 'UTF-8')
+                    . ';color:' . htmlspecialchars($n['button_color'] ?? '#0f172a', ENT_QUOTES, 'UTF-8') . ';">'
+                    . htmlspecialchars($n['button_text'], ENT_QUOTES, 'UTF-8') . '</a>';
+            }
+
+            $ribbon = '';
+            if ($tpl === 'ribbon') {
+                $ribbon = '<span class="nb-promo-ribbon-corner" aria-hidden="true"></span><span class="nb-promo-ribbon-label">Sale</span>';
+            }
+
+            $cls = 'nb-promo-surface nb-promo-' . $tpl;
+            $inner = '<div class="' . $cls . '"' . $surfaceStyle . '>' . $ribbon
+                . '<div class="nb-promo-headline">' . $headline . '</div>'
+                . ($sub !== '' ? '<div class="nb-promo-sub">' . $sub . '</div>' : '')
+                . '<div class="nb-promo-actions">' . $codeRow . $cta . '</div>'
+                . '</div>';
+
+            return $inner;
+        }
+
+        /** One-line script for coupon copy (injected once per page when promos with codes exist). */
+        public static function promotionCopyScript(): string {
+            return '<script>
+if(typeof nbCopyPromoCode==="undefined"){
+function nbCopyPromoCode(btn){
+var v=btn.getAttribute("data-nb-copy")||"";
+if(!v)return;
+if(navigator.clipboard&&navigator.clipboard.writeText){
+navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textContent="Copied!";setTimeout(function(){btn.textContent=o;},1600);});
+}else{var t=document.createElement("textarea");t.value=v;t.style.position="fixed";t.style.left="-9999px";document.body.appendChild(t);t.select();try{document.execCommand("copy");var o=btn.textContent;btn.textContent="Copied!";setTimeout(function(){btn.textContent=o;},1600);}catch(e){}document.body.removeChild(t);}
+}
+}
+</script>';
+        }
+
         /** Admin-only: checklist with real todo IDs — click circles to toggle (reloads). */
         private static function renderAdminTodoBannerInteractive(int $noticeId): string {
             if ($noticeId <= 0 || !function_exists('noticebanner_get_todos_for_notice')) {
@@ -674,6 +783,7 @@ alert((d&&d.message)||"Could not update task");
             $html = '';
             $stylePrefix = '';
             $needsBannerTodoJs = false;
+            $needsPromoCopyJs = false;
             foreach ($notices as $n) {
                 // ── Audience gate ──
                 $show = ($area === 'admin' && !empty($n['show_to_admins']))
@@ -737,12 +847,21 @@ alert((d&&d.message)||"Could not update task");
                 $bg       = $n['bg_color']   ?: '#fffae6';
                 $color    = $n['font_color'] ?: '#222';
                 $priority = $n['priority']   ?? 'normal';
+                $isPromo  = !empty($n['is_promotion_banner']);
 
                 $accentMap = ['critical' => '#dc2626', 'high' => '#f97316', 'normal' => '#2563eb', 'low' => '#9ca3af'];
                 $accent    = $accentMap[$priority] ?? '#2563eb';
 
                 $title = htmlspecialchars($n['notice_title'] ?? '');
-                if (!empty($n['is_todo_banner'])) {
+                if ($isPromo) {
+                    if (strpos($stylePrefix, 'nb-promo-banner-css') === false) {
+                        $stylePrefix .= self::promotionBannerStyles();
+                    }
+                    $content = self::renderPromotionBannerBody($n, $area, $isPro);
+                    if (trim((string)($n['promo_coupon_code'] ?? '')) !== '') {
+                        $needsPromoCopyJs = true;
+                    }
+                } elseif (!empty($n['is_todo_banner'])) {
                     if ($stylePrefix === '') {
                         $stylePrefix = self::todoBannerStyles();
                     }
@@ -812,9 +931,9 @@ alert((d&&d.message)||"Could not update task");
                     }
                 }
 
-                // ── CTA button (Pro) ──
+                // ── CTA button (Pro) — skipped for promotion banners (CTA is inside the promo card) ──
                 $btnHtml = '';
-                if ($isPro && !empty($n['button_enabled']) && !empty($n['button_text']) && !empty($n['button_link'])) {
+                if (!$isPromo && $isPro && !empty($n['button_enabled']) && !empty($n['button_text']) && !empty($n['button_link'])) {
                     $target  = !empty($n['button_newtab']) ? ' target="_blank" rel="noopener noreferrer"' : '';
                     $btnHtml = '<a href="' . htmlspecialchars($n['button_link']) . '"' . $target
                         . ' style="display:inline-block;margin-top:10px;padding:7px 22px;border-radius:6px;'
@@ -918,18 +1037,25 @@ alert((d&&d.message)||"Could not update task");
                 }
 
                 // ── Body ──
-                $bodyHtml = '<div style="margin-top:10px;font-size:14px;line-height:1.7;max-width:800px;margin-left:auto;margin-right:auto;text-align:left;">'
+                $bodyTop = $isPromo ? '4px' : '10px';
+                $bodyHtml = '<div style="margin-top:' . $bodyTop . ';font-size:14px;line-height:1.7;max-width:880px;margin-left:auto;margin-right:auto;text-align:left;">'
                     . $content . $btnHtml . $ticketHtml . $pollHtml
                     . $tagsHtml . $assignedHtml
                     . '</div>';
 
                 // ── Banner wrapper ──
-                $headerRow = '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">'
-                    . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
-                    . self::priorityBadge($priority)
-                    . $pinnedHtml
-                    . $tsHtml
-                    . '</div>';
+                $headerRow = $isPromo
+                    ? '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;">'
+                        . '<span style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#7c3aed;">Promotion</span>'
+                        . $pinnedHtml
+                        . $tsHtml
+                        . '</div>'
+                    : '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">'
+                        . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
+                        . self::priorityBadge($priority)
+                        . $pinnedHtml
+                        . $tsHtml
+                        . '</div>';
 
                 $dismissBtn = '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" '
                     . 'style="padding:3px 10px;font-size:16px;line-height:1;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;flex-shrink:0;" title="Dismiss">&times;</button>';
@@ -938,8 +1064,10 @@ alert((d&&d.message)||"Could not update task");
                 $controls = '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;">'
                     . $ackBtn;
 
-                $bannerStyle = 'background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;'
-                    . 'color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);';
+                $bannerStyle = $isPromo
+                    ? ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:8px 10px;box-shadow:none;')
+                    : ('background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;'
+                    . 'color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);');
 
                 if (!empty($n['expandable'])) {
                     $expandBtn = '<button type="button" onclick="(function(b,c){var open=c.style.display!==\'none\';c.style.display=open?\'none\':\'block\';b.textContent=open?\'Expand\':\'Collapse\';})(this,document.getElementById(\'' . $id . '_body\'))" '
@@ -1094,8 +1222,9 @@ function nbPollReset(btn,noticeId){
             }
 
             $bannerTodoScript = $needsBannerTodoJs ? self::bannerTodoToggleScript() : '';
+            $promoCopyScript  = !empty($needsPromoCopyJs) ? self::promotionCopyScript() : '';
 
-            return $stylePrefix . $html . $bannerTodoScript;
+            return $stylePrefix . $html . $bannerTodoScript . $promoCopyScript;
         }
     }
 }

@@ -345,6 +345,7 @@ $licBadgeLabel = $isPro ? '✓ Pro Active' : (($licStatus === 'no_key' || $licSt
         <span style="font-size:11px;font-weight:600;color:#854d0e;background:#fef9c3;border:1px solid #fde68a;border-radius:999px;padding:1px 7px;margin-left:4px;"><?php echo $activeCount; ?>/<?php echo $freeCap; ?></span>
         <?php endif; ?>
     </span>
+    <span class="nb-tab" id="nb-tab-promotions" onclick="nbMainTab('promotions',this)">🎁 Promotions</span>
     <span class="nb-tab" onclick="nbMainTab('todo-banners',this)">🧩 To-Do Banners</span>
     <span class="nb-tab" onclick="nbMainTab('license',this)">🔑 License &amp; Settings
         <span class="nb-lic-badge <?php echo $licBadgeClass; ?>" style="padding:1px 8px;font-size:11px;margin-left:4px;"><?php echo htmlspecialchars($licBadgeLabel); ?></span>
@@ -1439,6 +1440,297 @@ try {
 </div><!-- /nb-pane-notices -->
 
 <!-- ══════════════════════════════════════════════════════════════════════════
+     TAB PANE: PROMOTIONS (sale banners — coupons, links, templates, audience)
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="nb-pane-promotions" class="nb-main-tab-pane">
+<div class="nb-card">
+    <div class="nb-card-header">
+        <h2>🎁 Promotion banners</h2>
+        <span style="font-size:13px;color:#64748b;">Deploy flashy sale banners with coupon codes and CTAs</span>
+    </div>
+    <div class="nb-card-body">
+        <?php
+        $pe = $edit_promo ?? null;
+        $promoTplCur = $pe['promo_template'] ?? 'gradient';
+        $hasPromoTargeting = $isPro && $pe && (
+            !empty($pe['client_groups']) || !empty($pe['target_clients']) || !empty($pe['target_servers'])
+            || !empty($pe['target_products']) || !empty($pe['page_slugs'])
+        );
+        ?>
+        <form method="post" id="nb-promo-form" class="nb-grid" style="gap:14px;">
+            <?php if (!empty($pe)): ?>
+                <input type="hidden" name="edit_id" value="<?php echo (int)$pe['id']; ?>">
+            <?php endif; ?>
+            <div class="nb-field nb-span2">
+                <label>Headline <span style="color:#ef4444;">*</span></label>
+                <input type="text" name="notice_title" required placeholder="e.g. Spring sale — 40% off hosting"
+                    value="<?php echo htmlspecialchars($pe['notice_title'] ?? ''); ?>">
+            </div>
+            <div class="nb-field nb-span2">
+                <label>Message <span style="color:#64748b;font-weight:500;">(Markdown)</span></label>
+                <textarea name="notice_content" rows="4" placeholder="Short pitch, expiry, terms…"><?php echo htmlspecialchars($pe['notice_content'] ?? ''); ?></textarea>
+            </div>
+            <div class="nb-field">
+                <label>Visual template</label>
+                <select name="promo_template">
+                    <?php
+                    $pt = $promoTplCur;
+                    $promoTplOpts = [
+                        'gradient' => 'Gradient hero (vibrant)',
+                        'flash'    => 'Flash shimmer (animated)',
+                        'neon'     => 'Neon night',
+                        'ribbon'   => 'Gold ribbon',
+                        'minimal'  => 'Minimal pro',
+                    ];
+                    foreach ($promoTplOpts as $pv => $pl): ?>
+                        <option value="<?php echo htmlspecialchars($pv); ?>" <?php echo ($pt === $pv) ? 'selected' : ''; ?>><?php echo htmlspecialchars($pl); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="nb-field">
+                <label>Coupon code <span style="color:#64748b;font-weight:500;">(optional)</span></label>
+                <input type="text" name="promo_coupon_code" maxlength="120" placeholder="SAVE40"
+                    value="<?php echo htmlspecialchars($pe['promo_coupon_code'] ?? ''); ?>">
+            </div>
+            <div class="nb-field">
+                <label>Accent / gradient start</label>
+                <div class="nb-color-row">
+                    <input type="color" id="nb-promo-bg-picker" value="<?php echo htmlspecialchars($pe['bg_color'] ?? '#6366f1'); ?>">
+                    <input type="text" id="nb-promo-bg-hex" name="bg_color" value="<?php echo htmlspecialchars($pe['bg_color'] ?? '#6366f1'); ?>">
+                </div>
+            </div>
+            <div class="nb-field">
+                <label>Text color <?php if ($promoTplCur === 'minimal'): ?><span style="font-size:11px;color:#94a3b8;">(minimal)</span><?php endif; ?></label>
+                <div class="nb-color-row">
+                    <input type="color" id="nb-promo-fg-picker" value="<?php echo htmlspecialchars($pe['font_color'] ?? '#ffffff'); ?>">
+                    <input type="text" id="nb-promo-fg-hex" name="font_color" value="<?php echo htmlspecialchars($pe['font_color'] ?? '#ffffff'); ?>">
+                </div>
+            </div>
+            <?php if ($isPro): ?>
+            <div class="nb-field nb-span2" style="padding:12px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;">
+                <label class="nb-switch" style="margin-bottom:8px;">
+                    <input type="checkbox" name="button_enabled" value="1" <?php echo !empty($pe['button_enabled']) ? 'checked' : ''; ?> id="nb-promo-cta-en" onchange="document.getElementById('nb-promo-cta-opts').style.display=this.checked?'block':'none';">
+                    <span class="nb-switch-track"></span>
+                    <span>Call-to-action link (opens in new tab recommended)</span>
+                </label>
+                <div id="nb-promo-cta-opts" style="display:<?php echo !empty($pe['button_enabled']) ? 'block' : 'none'; ?>;">
+                    <div class="nb-grid" style="margin-top:10px;">
+                        <div class="nb-field">
+                            <label>Button label</label>
+                            <input type="text" name="button_text" value="<?php echo htmlspecialchars($pe['button_text'] ?? 'Shop the sale'); ?>">
+                        </div>
+                        <div class="nb-field">
+                            <label>URL</label>
+                            <input type="url" name="button_link" placeholder="https://…" value="<?php echo htmlspecialchars($pe['button_link'] ?? ''); ?>">
+                        </div>
+                        <div class="nb-field">
+                            <label class="nb-switch">
+                                <input type="checkbox" name="button_newtab" value="1" <?php echo !empty($pe['button_newtab']) ? 'checked' : ''; ?>>
+                                <span class="nb-switch-track"></span>
+                                <span>New tab</span>
+                            </label>
+                        </div>
+                        <div class="nb-field">
+                            <label>Button colors</label>
+                            <div class="nb-color-row">
+                                <input type="color" id="nb-promo-bt-bg-picker" value="<?php echo htmlspecialchars($pe['button_bg'] ?? '#ffffff'); ?>">
+                                <input type="text" id="nb-promo-bt-bg-hex" name="button_bg" value="<?php echo htmlspecialchars($pe['button_bg'] ?? '#ffffff'); ?>">
+                            </div>
+                        </div>
+                        <div class="nb-field">
+                            <label>&nbsp;</label>
+                            <div class="nb-color-row">
+                                <input type="color" id="nb-promo-bt-fg-picker" value="<?php echo htmlspecialchars($pe['button_color'] ?? '#0f172a'); ?>">
+                                <input type="text" id="nb-promo-bt-fg-hex" name="button_color" value="<?php echo htmlspecialchars($pe['button_color'] ?? '#0f172a'); ?>">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <?php else: ?>
+            <div class="nb-field nb-span2 nb-pro-section">
+                <p style="margin:0;font-size:13px;color:#64748b;">🔒 Pro unlocks CTA buttons, scheduling, and audience targeting for promotions.</p>
+            </div>
+            <?php endif; ?>
+
+            <div class="nb-field nb-span2 nb-switch-row">
+                <label class="nb-switch">
+                    <input type="checkbox" name="show_to_clients" value="1" <?php echo !isset($pe) || !empty($pe['show_to_clients']) ? 'checked' : ''; ?>>
+                    <span class="nb-switch-track"></span>
+                    <span>Show to clients</span>
+                </label>
+                <label class="nb-switch">
+                    <input type="checkbox" name="show_to_admins" value="1" <?php echo !empty($pe['show_to_admins']) ? 'checked' : ''; ?>>
+                    <span class="nb-switch-track"></span>
+                    <span>Show to admins</span>
+                </label>
+            </div>
+            <?php if ($isPro): ?>
+            <div class="nb-field">
+                <label>Publish from</label>
+                <input type="datetime-local" name="publish_at" value="<?php echo !empty($pe['publish_at']) ? date('Y-m-d\TH:i', strtotime($pe['publish_at'])) : ''; ?>">
+            </div>
+            <div class="nb-field">
+                <label>Expires</label>
+                <input type="datetime-local" name="expires_at" value="<?php echo !empty($pe['expires_at']) ? date('Y-m-d\TH:i', strtotime($pe['expires_at'])) : ''; ?>">
+            </div>
+            <?php endif; ?>
+
+            <?php if ($isPro): ?>
+            <div class="nb-field nb-span2">
+                <label>Tags</label>
+                <input type="text" name="tags" placeholder="sale, blackfriday" value="<?php echo htmlspecialchars($pe['tags'] ?? ''); ?>">
+            </div>
+            <div class="nb-field nb-span2">
+                <label>Assign to admins <span style="color:#64748b;font-weight:500;">(optional — limit who sees it in admin)</span></label>
+                <select name="assigned_admins[]" multiple class="nb-todo-assign-multi" style="min-height:88px;">
+                    <?php foreach ($admins as $a): ?>
+                        <option value="<?php echo (int)$a->id; ?>" <?php echo (!empty($pe) && in_array((int)$a->id, $pe['assigned_admins'] ?? [], true)) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="nb-field nb-span2">
+                <label>Client groups</label>
+                <select name="client_groups[]" multiple class="nb-todo-assign-multi" style="min-height:88px;">
+                    <?php foreach ($clientGroups as $g): ?>
+                        <option value="<?php echo (int)$g->id; ?>" <?php echo (!empty($pe) && in_array((int)$g->id, $pe['client_groups'] ?? [], true)) ? 'selected' : ''; ?>>
+                            <?php echo htmlspecialchars($g->groupname); ?>
+                        </option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+
+            <div class="nb-field nb-span2">
+                <div class="nb-section-toggle <?php echo $hasPromoTargeting ? 'open' : ''; ?>" id="nb-promo-target-toggle" onclick="nbToggleSection('nb-promo-target-body','nb-promo-target-toggle')">
+                    <?php echo $hasPromoTargeting ? '▼' : '▶'; ?> Target audience (advanced)
+                </div>
+                <div id="nb-promo-target-body" class="nb-collapsible <?php echo $hasPromoTargeting ? 'open' : ''; ?>" style="padding:12px 0;">
+                    <div class="nb-field">
+                        <label>Specific clients</label>
+                        <div id="nb-promo-client-chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;min-height:10px;">
+                            <?php
+                            if (!empty($pe['target_clients'])) {
+                                $pclients = noticebanner_get_clients_by_ids($pe['target_clients']);
+                                foreach ($pclients as $c) {
+                                    $cid = (int)$c->id;
+                                    $lab = htmlspecialchars($c->firstname . ' ' . $c->lastname . ' (' . $c->email . ')');
+                                    echo '<span class="nb-chip" id="nb-promo-client-chip-' . $cid . '" data-id="' . $cid . '"><span>' . $lab . '</span>'
+                                        . '<button type="button" onclick="nbPromoRemoveClient(' . $cid . ')" style="background:none;border:none;cursor:pointer;color:#7c3aed;font-size:13px;">&times;</button>'
+                                        . '<input type="hidden" name="target_clients[]" value="' . $cid . '"></span>';
+                                }
+                            }
+                            ?>
+                        </div>
+                        <div style="position:relative;">
+                            <input type="text" id="nb-promo-client-search" placeholder="Search clients…" autocomplete="off"
+                                oninput="nbPromoClientSearch(this.value)" onfocus="nbPromoClientSearch(this.value)" style="width:100%;max-width:420px;">
+                            <div id="nb-promo-client-results" style="display:none;position:absolute;z-index:9999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.1);min-width:320px;max-height:220px;overflow-y:auto;"></div>
+                        </div>
+                    </div>
+                    <div class="nb-grid">
+                        <div class="nb-field">
+                            <label>Servers</label>
+                            <select name="target_servers[]" multiple style="min-height:88px;width:100%;">
+                                <?php foreach ($servers as $s): ?>
+                                    <option value="<?php echo (int)$s->id; ?>" <?php echo (!empty($pe) && in_array((int)$s->id, $pe['target_servers'] ?? [], true)) ? 'selected' : ''; ?>><?php echo htmlspecialchars($s->name); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                        <div class="nb-field">
+                            <label>Products</label>
+                            <select name="target_products[]" multiple style="min-height:88px;width:100%;">
+                                <?php foreach ($products as $p): ?>
+                                    <option value="<?php echo (int)$p->id; ?>" <?php echo (!empty($pe) && in_array((int)$p->id, $pe['target_products'] ?? [], true)) ? 'selected' : ''; ?>><?php echo htmlspecialchars($p->name); ?></option>
+                                <?php endforeach; ?>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="nb-field">
+                        <label>Page paths <span style="color:#64748b;font-weight:500;">(one per line, client area)</span></label>
+                        <textarea name="page_slugs_raw" rows="3" placeholder="/clientarea.php&#10;/cart.php*"><?php
+                            if (!empty($pe['page_slugs']) && is_array($pe['page_slugs'])) {
+                                echo htmlspecialchars(implode("\n", $pe['page_slugs']));
+                            }
+                        ?></textarea>
+                    </div>
+                </div>
+            </div>
+            <?php endif; ?>
+
+            <div class="nb-field nb-span2" style="margin-top:8px;">
+                <input type="hidden" name="display_type" value="banner">
+                <input type="hidden" name="expandable" value="0">
+                <input type="hidden" name="show_again_minutes" value="60">
+                <input type="hidden" name="priority" value="normal">
+                <input type="hidden" name="notice_webhook_url" value="<?php echo htmlspecialchars($pe['webhook_url'] ?? ''); ?>">
+                <button type="submit" name="save_promotion" value="1" class="nb-btn nb-btn-primary"><?php echo !empty($pe) ? 'Update promotion' : 'Deploy promotion'; ?></button>
+                <?php if (!empty($pe)): ?>
+                    <a href="addonmodules.php?module=noticebanner#nb-promotions" class="nb-btn nb-btn-ghost">Cancel edit</a>
+                <?php endif; ?>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="nb-card">
+    <div class="nb-card-header">
+        <h2>Active promotions</h2>
+        <span style="font-size:13px;color:#64748b;"><?php echo count($promoBanners ?? []); ?> configured</span>
+    </div>
+    <div class="nb-card-body" style="padding:0;">
+        <?php if (empty($promoBanners)): ?>
+            <p style="padding:22px;margin:0;color:#64748b;">No promotion banners yet. Create one above.</p>
+        <?php else: ?>
+        <table class="nb-table">
+            <thead>
+                <tr>
+                    <th>Headline</th>
+                    <th>Template</th>
+                    <th>Audience</th>
+                    <th style="width:200px;">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+            <?php foreach ($promoBanners as $pb): ?>
+                <tr>
+                    <td><strong><?php echo htmlspecialchars($pb['notice_title'] ?? ''); ?></strong>
+                        <?php if (!empty($pb['promo_coupon_code'])): ?>
+                            <div style="font-size:12px;color:#6366f1;font-weight:600;margin-top:4px;">Code: <?php echo htmlspecialchars($pb['promo_coupon_code']); ?></div>
+                        <?php endif; ?>
+                    </td>
+                    <td><?php echo htmlspecialchars($pb['promo_template'] ?? 'gradient'); ?></td>
+                    <td style="font-size:13px;color:#475569;">
+                        <?php
+                        $bits = [];
+                        if (!empty($pb['show_to_clients'])) $bits[] = 'Clients';
+                        if (!empty($pb['show_to_admins'])) $bits[] = 'Admins';
+                        if (!empty($pb['client_groups'])) $bits[] = 'Groups';
+                        if (!empty($pb['target_clients'])) $bits[] = 'Specific clients';
+                        if (!empty($pb['target_servers'])) $bits[] = 'Servers';
+                        if (!empty($pb['target_products'])) $bits[] = 'Products';
+                        if (!empty($pb['page_slugs'])) $bits[] = 'Pages';
+                        echo $bits ? implode(' · ', $bits) : '—';
+                        ?>
+                    </td>
+                    <td>
+                        <a class="nb-btn nb-btn-ghost nb-btn-sm" href="addonmodules.php?module=noticebanner&amp;edit_promo_id=<?php echo (int)$pb['id']; ?>#nb-promotions">Edit</a>
+                        <form method="post" style="display:inline;" onsubmit="return confirm('Delete this promotion?');">
+                            <input type="hidden" name="delete_notice" value="<?php echo (int)$pb['id']; ?>">
+                            <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        <?php endif; ?>
+    </div>
+</div>
+</div><!-- /nb-pane-promotions -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════
      TAB PANE: TO-DO BANNERS
 ══════════════════════════════════════════════════════════════════════════ -->
 <div id="nb-pane-todo-banners" class="nb-main-tab-pane">
@@ -2191,7 +2483,7 @@ $licLastError  = $licenseStatus['last_error'] ?? null;
 function nbMainTab(pane, el) {
     document.querySelectorAll('#nb-main-tabs .nb-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
-    ['notices','todo-banners','license','log'].forEach(function(p) {
+    ['notices','promotions','todo-banners','license','log'].forEach(function(p) {
         var el2 = document.getElementById('nb-pane-' + p);
         if (el2) el2.classList.toggle('active', p === pane);
     });
@@ -2201,10 +2493,10 @@ function nbMainTab(pane, el) {
 // Restore tab from hash on load
 (function() {
     var h = window.location.hash;
-    var map = {'#nb-notices':'notices','#nb-todo-banners':'todo-banners','#nb-todos':'todo-banners','#nb-license':'license','#nb-log':'log'};
+    var map = {'#nb-notices':'notices','#nb-promotions':'promotions','#nb-todo-banners':'todo-banners','#nb-todos':'todo-banners','#nb-license':'license','#nb-log':'log'};
     if (map[h]) {
         var tabs = document.querySelectorAll('#nb-main-tabs .nb-tab');
-        var panes = ['notices','todo-banners','license','log'];
+        var panes = ['notices','promotions','todo-banners','license','log'];
         panes.forEach(function(p, i) {
             var pEl = document.getElementById('nb-pane-' + p);
             if (pEl) pEl.classList.toggle('active', p === map[h]);
@@ -2366,6 +2658,24 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('nb-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
 });
 <?php endif; ?>
+<?php if (!empty($edit_promo)): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.getElementById('nb-promo-form')) {
+        document.getElementById('nb-promo-form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+    try { history.replaceState(null,'','#nb-promotions'); } catch(e) {}
+    document.querySelectorAll('#nb-main-tabs .nb-tab').forEach(function(t){t.classList.remove('active');});
+    var pt = document.getElementById('nb-pane-promotions');
+    var tt = document.getElementById('nb-tab-promotions');
+    if (tt) tt.classList.add('active');
+    if (pt) {
+        pt.classList.add('active');
+        ['nb-pane-notices','nb-pane-todo-banners','nb-pane-license','nb-pane-log'].forEach(function(id){
+            var x=document.getElementById(id); if(x) x.classList.remove('active');
+        });
+    }
+});
+<?php endif; ?>
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function() {
@@ -2443,6 +2753,83 @@ function nbRemoveClient(id) {
     var chip = document.getElementById('nb-client-chip-' + id);
     if (chip) chip.remove();
 }
+
+// ── Promotion form: colors ───────────────────────────────────────────────────
+function nbPromoBindColor(pickerId, hexId) {
+    var p = document.getElementById(pickerId), h = document.getElementById(hexId);
+    if (!p || !h) return;
+    p.addEventListener('input', function() { h.value = p.value; });
+    h.addEventListener('input', function() {
+        if (/^#[0-9A-Fa-f]{6}$/.test(h.value)) p.value = h.value;
+    });
+}
+document.addEventListener('DOMContentLoaded', function() {
+    nbPromoBindColor('nb-promo-bg-picker', 'nb-promo-bg-hex');
+    nbPromoBindColor('nb-promo-fg-picker', 'nb-promo-fg-hex');
+    nbPromoBindColor('nb-promo-bt-bg-picker', 'nb-promo-bt-bg-hex');
+    nbPromoBindColor('nb-promo-bt-fg-picker', 'nb-promo-bt-fg-hex');
+});
+
+// ── Promotion form: client search (separate IDs from main notice form) ────────
+var nbPromoClientTimer = null;
+function nbPromoClientSearch(val) {
+    clearTimeout(nbPromoClientTimer);
+    var res = document.getElementById('nb-promo-client-results');
+    var inp = document.getElementById('nb-promo-client-search');
+    if (!res || !inp) return;
+    if (val.length < 2) { res.style.display = 'none'; return; }
+    nbPromoClientTimer = setTimeout(function() {
+        var form = new FormData();
+        form.append('nb_client_search', val);
+        fetch(window.location.href, { method: 'POST', body: form, credentials: 'same-origin' })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data.length) { res.style.display = 'none'; return; }
+                res.innerHTML = '';
+                data.forEach(function(c) {
+                    var item = document.createElement('div');
+                    item.style.cssText = 'padding:8px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid #f1f5f9;';
+                    item.textContent = c.text;
+                    item.onmouseenter = function() { item.style.background = '#f0f9ff'; };
+                    item.onmouseleave = function() { item.style.background = ''; };
+                    item.onclick = function() {
+                        nbPromoAddClient(c.id, c.text);
+                        inp.value = '';
+                        res.style.display = 'none';
+                    };
+                    res.appendChild(item);
+                });
+                res.style.position = 'absolute';
+                res.style.top = (inp.offsetTop + inp.offsetHeight + 2) + 'px';
+                res.style.left = inp.offsetLeft + 'px';
+                res.style.width = inp.offsetWidth + 'px';
+                res.style.display = 'block';
+            })
+            .catch(function() { res.style.display = 'none'; });
+    }, 300);
+}
+function nbPromoAddClient(id, text) {
+    if (document.getElementById('nb-promo-client-chip-' + id)) return;
+    var chips = document.getElementById('nb-promo-client-chips');
+    if (!chips) return;
+    var chip = document.createElement('span');
+    chip.className = 'nb-chip';
+    chip.id = 'nb-promo-client-chip-' + id;
+    chip.dataset.id = id;
+    chip.innerHTML = '<span>' + text.replace(/</g,'&lt;') + '</span>'
+        + '<button type="button" onclick="nbPromoRemoveClient(' + id + ')" style="background:none;border:none;cursor:pointer;color:#7c3aed;font-size:13px;line-height:1;padding:0 0 0 4px;">&times;</button>'
+        + '<input type="hidden" name="target_clients[]" value="' + id + '">';
+    chips.appendChild(chip);
+}
+function nbPromoRemoveClient(id) {
+    var chip = document.getElementById('nb-promo-client-chip-' + id);
+    if (chip) chip.remove();
+}
+document.addEventListener('click', function(e) {
+    var res = document.getElementById('nb-promo-client-results');
+    var inp = document.getElementById('nb-promo-client-search');
+    if (res && inp && !inp.contains(e.target) && !res.contains(e.target)) res.style.display = 'none';
+});
 
 // ── Predefined acknowledgement panel helpers ─────────────────────────────────
 function nbToggleAckList(noticeId, type) {
