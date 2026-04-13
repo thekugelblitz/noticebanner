@@ -1395,83 +1395,103 @@ try {
         <span style="font-size:13px;color:#64748b;"><?php echo count($todoBanners); ?> banner<?php echo count($todoBanners) === 1 ? '' : 's'; ?></span>
     </div>
     <div class="nb-card-body">
-        <div class="nb-alert" style="margin-bottom:12px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;">
-            Create banner records specifically for task management. These stay separated from regular notice workflow.
-        </div>
-        <form method="post" style="display:grid;grid-template-columns:1.2fr 2fr auto;gap:10px;align-items:end;margin-bottom:14px;">
-            <div class="nb-field" style="margin:0;">
-                <label>Banner title</label>
-                <input type="text" name="todo_banner_title" required placeholder="e.g. Migration Sprint Tasks">
-            </div>
-            <div class="nb-field" style="margin:0;">
-                <label>Banner description</label>
-                <input type="text" name="todo_banner_content" placeholder="Optional context shown in banner">
-            </div>
-            <button type="submit" name="create_todo_banner" value="1" class="nb-btn nb-btn-primary">Create To-Do Banner</button>
-        </form>
-        <form method="get" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:10px;">
-            <input type="hidden" name="module" value="noticebanner">
-            <div class="nb-field" style="margin:0;min-width:180px;">
-                <label>Show banners with todos from</label>
-                <select name="todo_banner_range">
-                    <option value="3m" <?php echo ($todoBannerRange === '3m') ? 'selected' : ''; ?>>Last 3 months</option>
-                    <option value="6m" <?php echo ($todoBannerRange === '6m') ? 'selected' : ''; ?>>Last 6 months</option>
-                    <option value="all" <?php echo ($todoBannerRange === 'all') ? 'selected' : ''; ?>>All time</option>
-                </select>
-            </div>
-            <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Apply</button>
-        </form>
+        <?php
+        $selectedBannerId = (int)($todoFilters['notice_id'] ?? 0);
+        if ($selectedBannerId <= 0 && !empty($todoBanners)) {
+            $selectedBannerId = (int)$todoBanners[0]['id'];
+        }
+        $selectedBanner = null;
+        foreach ($todoBanners as $tb) {
+            if ((int)$tb['id'] === $selectedBannerId) { $selectedBanner = $tb; break; }
+        }
+        $visibleTodoRows = $selectedBannerId > 0 ? array_values(array_filter($todoRows, fn($r) => (int)$r['notice_id'] === $selectedBannerId)) : [];
+        ?>
 
-        <?php if (empty($todoBanners)): ?>
-            <div style="font-size:14px;color:#94a3b8;">No To-Do banners yet.</div>
-        <?php else: ?>
-        <div style="overflow-x:auto;">
-            <table class="nb-log-table">
-                <thead>
-                    <tr>
-                        <th>Banner</th>
-                        <th>Visibility</th>
-                        <th>Created</th>
-                        <th>Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($todoBanners as $tb): ?>
-                    <tr>
-                        <td>
-                            <strong><?php echo htmlspecialchars($tb['notice_title']); ?></strong><br>
-                            <span style="font-size:12px;color:#64748b;"><?php echo htmlspecialchars(mb_strimwidth(strip_tags($tb['notice_content'] ?? ''), 0, 110, '…')); ?></span>
-                        </td>
-                        <td style="font-size:12px;"><?php echo !empty($tb['show_to_admins']) ? 'Admins' : 'Hidden'; ?></td>
-                        <td style="font-size:12px;color:#64748b;"><?php echo !empty($tb['created_at']) ? date('M j, Y g:ia', strtotime($tb['created_at'])) : '—'; ?></td>
-                        <td style="white-space:nowrap;">
-                            <a href="addonmodules.php?module=noticebanner&todo_notice_id=<?php echo (int)$tb['id']; ?>#nb-todo-banners" class="nb-btn nb-btn-ghost nb-btn-sm">Open Tasks</a>
-                            <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="nbOpenBannerEditor(<?php echo (int)$tb['id']; ?>)">Edit Banner</button>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-        <?php endif; ?>
-
-        <div style="border-top:1px solid #e2e8f0;margin:16px 0 12px;"></div>
-        <h3 style="margin:0 0 10px 0;font-size:15px;color:#0f172a;">To-Do Manager</h3>
-        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;margin-bottom:12px;">
-            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:8px;">Quick Add Task</div>
-            <form method="post" class="nb-todo-ajax" style="display:grid;grid-template-columns:1.2fr 2fr 1fr 1fr auto;gap:8px;align-items:end;">
-                <input type="hidden" name="nb_todo_action" value="add">
-                <div class="nb-field" style="margin:0;">
-                    <label>Banner</label>
-                    <select name="todo_notice_id" required>
-                        <option value="">Select To-Do banner...</option>
-                        <?php foreach ($todoBanners as $n): ?>
-                            <option value="<?php echo (int)$n['id']; ?>" <?php echo ((int)$todoFilters['notice_id'] === (int)$n['id']) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($n['notice_title']); ?>
-                            </option>
-                        <?php endforeach; ?>
+        <div style="display:flex;justify-content:space-between;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:10px;">
+            <form method="get" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+                <input type="hidden" name="module" value="noticebanner">
+                <div class="nb-field" style="margin:0;min-width:170px;">
+                    <label>Show banners with todos</label>
+                    <select name="todo_banner_range">
+                        <option value="3m" <?php echo ($todoBannerRange === '3m') ? 'selected' : ''; ?>>Last 3 months</option>
+                        <option value="6m" <?php echo ($todoBannerRange === '6m') ? 'selected' : ''; ?>>Last 6 months</option>
+                        <option value="all" <?php echo ($todoBannerRange === 'all') ? 'selected' : ''; ?>>All time</option>
                     </select>
                 </div>
+                <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Apply</button>
+            </form>
+            <button type="button" class="nb-btn nb-btn-primary nb-btn-sm" onclick="nbToggleSection('nb-new-banner-body','nb-new-banner-toggle')">+ New To-Do Banner</button>
+        </div>
+
+        <div id="nb-new-banner-body" class="nb-collapsible" style="margin-bottom:12px;">
+            <form method="post" style="display:grid;grid-template-columns:1.2fr 2fr auto;gap:10px;align-items:end;">
+                <div class="nb-field" style="margin:0;">
+                    <label>Banner title</label>
+                    <input type="text" name="todo_banner_title" required placeholder="e.g. Migration Sprint Tasks">
+                </div>
+                <div class="nb-field" style="margin:0;">
+                    <label>Banner description</label>
+                    <input type="text" name="todo_banner_content" placeholder="Optional context">
+                </div>
+                <button type="submit" name="create_todo_banner" value="1" class="nb-btn nb-btn-primary">Create</button>
+            </form>
+        </div>
+
+        <div style="display:grid;grid-template-columns:270px 1fr;gap:14px;">
+            <div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;background:#fff;">
+                <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;">Banners</div>
+                <?php if (empty($todoBanners)): ?>
+                    <div style="padding:8px;color:#94a3b8;font-size:13px;">No banners yet.</div>
+                <?php else: ?>
+                    <?php foreach ($todoBanners as $tb): ?>
+                        <?php $active = ((int)$tb['id'] === $selectedBannerId); ?>
+                        <a href="addonmodules.php?module=noticebanner&todo_banner_range=<?php echo urlencode($todoBannerRange); ?>&todo_notice_id=<?php echo (int)$tb['id']; ?>#nb-todo-banners"
+                           style="display:block;padding:9px 10px;margin:4px 0;border-radius:8px;text-decoration:none;border:1px solid <?php echo $active ? '#c7d2fe' : '#e2e8f0'; ?>;background:<?php echo $active ? '#eef2ff' : '#fff'; ?>;color:#0f172a;">
+                            <div style="font-size:13px;font-weight:600;line-height:1.3;"><?php echo htmlspecialchars($tb['notice_title']); ?></div>
+                        </a>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </div>
+
+            <div>
+                <?php if (!$selectedBanner): ?>
+                    <div style="padding:14px;border:1px dashed #cbd5e1;border-radius:8px;color:#64748b;">Select or create a To-Do banner to start.</div>
+                <?php else: ?>
+                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                        <div>
+                            <h3 style="margin:0;font-size:17px;"><?php echo htmlspecialchars($selectedBanner['notice_title']); ?></h3>
+                            <div style="font-size:12px;color:#64748b;"><?php echo htmlspecialchars($selectedBanner['notice_content'] ?? ''); ?></div>
+                        </div>
+                        <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="nbToggleSection('nb-edit-banner-body','nb-edit-banner-toggle')">Edit Banner</button>
+                    </div>
+
+                    <div id="nb-edit-banner-body" class="nb-collapsible" style="margin-bottom:10px;">
+                        <form method="post" style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;background:#f8fafc;">
+                            <input type="hidden" name="save_todo_banner_quick" value="1">
+                            <input type="hidden" name="todo_banner_edit_id" value="<?php echo (int)$selectedBanner['id']; ?>">
+                            <div class="nb-field" style="margin:0 0 8px 0;">
+                                <label>Title</label>
+                                <input type="text" name="todo_banner_edit_title" required value="<?php echo htmlspecialchars($selectedBanner['notice_title']); ?>">
+                            </div>
+                            <div class="nb-field" style="margin:0 0 8px 0;">
+                                <label>Description</label>
+                                <input type="text" name="todo_banner_edit_content" value="<?php echo htmlspecialchars($selectedBanner['notice_content'] ?? ''); ?>">
+                            </div>
+                            <label class="nb-switch" style="margin-bottom:8px;">
+                                <input type="checkbox" name="todo_banner_edit_visible_admins" value="1" <?php echo !empty($selectedBanner['show_to_admins']) ? 'checked' : ''; ?>>
+                                <span class="nb-switch-track"></span>
+                                Visible to Admins
+                            </label>
+                            <div><button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Save Banner</button></div>
+                        </form>
+                    </div>
+
+                    <h3 style="margin:0 0 10px 0;font-size:15px;color:#0f172a;">Tasks</h3>
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;margin-bottom:12px;">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:8px;">Quick Add Task</div>
+            <form method="post" class="nb-todo-ajax" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
+                <input type="hidden" name="nb_todo_action" value="add">
+                <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBanner['id']; ?>">
                 <div class="nb-field" style="margin:0;">
                     <label>Task title</label>
                     <input type="text" name="todo_title" required placeholder="Write task title">
@@ -1488,27 +1508,10 @@ try {
             </form>
         </div>
 
-        <form method="get" style="display:grid;grid-template-columns:1fr 1.2fr 1fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;">
+        <form method="get" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;">
             <input type="hidden" name="module" value="noticebanner">
-            <div class="nb-field" style="margin:0;">
-                <label>Banner window</label>
-                <select name="todo_banner_range">
-                    <option value="3m" <?php echo ($todoBannerRange === '3m') ? 'selected' : ''; ?>>Last 3 months</option>
-                    <option value="6m" <?php echo ($todoBannerRange === '6m') ? 'selected' : ''; ?>>Last 6 months</option>
-                    <option value="all" <?php echo ($todoBannerRange === 'all') ? 'selected' : ''; ?>>All time</option>
-                </select>
-            </div>
-            <div class="nb-field" style="margin:0;">
-                <label>Banner</label>
-                <select name="todo_notice_id">
-                    <option value="0">All To-Do banners</option>
-                    <?php foreach ($todoBanners as $n): ?>
-                        <option value="<?php echo (int)$n['id']; ?>" <?php echo ((int)$todoFilters['notice_id'] === (int)$n['id']) ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($n['notice_title']); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
+            <input type="hidden" name="todo_banner_range" value="<?php echo htmlspecialchars($todoBannerRange); ?>">
+            <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBanner['id']; ?>">
             <div class="nb-field" style="margin:0;">
                 <label>Status</label>
                 <select name="todo_status">
@@ -1539,7 +1542,7 @@ try {
             </div>
         </form>
 
-        <?php if (empty($todoRows)): ?>
+        <?php if (empty($visibleTodoRows)): ?>
             <div style="color:#94a3b8;font-size:14px;">No to-do entries match these filters.</div>
         <?php else: ?>
         <div style="overflow-x:auto;">
@@ -1556,7 +1559,7 @@ try {
                     </tr>
                 </thead>
                 <tbody>
-                    <?php foreach ($todoRows as $todo): ?>
+                    <?php foreach ($visibleTodoRows as $todo): ?>
                     <tr>
                         <td><?php echo htmlspecialchars($todoNoticeMap[(int)$todo['notice_id']] ?? ('Banner #' . (int)$todo['notice_id'])); ?></td>
                         <td>
@@ -1604,6 +1607,9 @@ try {
             </table>
         </div>
         <?php endif; ?>
+                <?php endif; ?>
+            </div>
+        </div>
     </div>
 </div>
 </div><!-- /nb-pane-todo-banners -->
@@ -1874,12 +1880,6 @@ document.querySelectorAll('form.nb-todo-ajax').forEach(function(form) {
         .catch(function(){ alert('Unable to update task right now.'); });
     });
 });
-
-function nbOpenBannerEditor(id) {
-    var url = 'addonmodules.php?module=noticebanner&edit_id=' + encodeURIComponent(id) + '#nb-notices';
-    var w = window.open(url, 'nbTodoBannerEditor', 'width=1280,height=860,resizable=yes,scrollbars=yes');
-    if (w && w.focus) w.focus();
-}
 
 // ── Markdown editor tab switching ─────────────────────────────────────────────
 function nbShowTab(tab, el) {

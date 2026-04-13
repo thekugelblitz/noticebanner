@@ -1625,6 +1625,32 @@ function noticebanner_output($vars) {
                 }
             }
         }
+        if (isset($_POST['save_todo_banner_quick'])) {
+            $bannerId = (int)($_POST['todo_banner_edit_id'] ?? 0);
+            $title = trim((string)($_POST['todo_banner_edit_title'] ?? ''));
+            $content = trim((string)($_POST['todo_banner_edit_content'] ?? ''));
+            $visibleAdmins = isset($_POST['todo_banner_edit_visible_admins']) ? 1 : 0;
+            if ($bannerId <= 0 || $title === '') {
+                $message = '<div class="nb-alert nb-alert-danger">Banner title is required.</div>';
+            } else {
+                try {
+                    \WHMCS\Database\Capsule::table('mod_noticebanner')
+                        ->where('id', $bannerId)
+                        ->where('is_todo_banner', 1)
+                        ->update([
+                            'notice_title'   => $title,
+                            'notice_content' => $content,
+                            'show_to_admins' => $visibleAdmins,
+                            'show_to_clients'=> 0,
+                            'updated_at'     => date('Y-m-d H:i:s'),
+                        ]);
+                    noticebanner_log($bannerId, 'todo_banner_updated', $title);
+                    $message = '<div class="nb-alert nb-alert-success">To-Do banner updated.</div>';
+                } catch (\Exception $e) {
+                    $message = '<div class="nb-alert nb-alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
+                }
+            }
+        }
         // ── Save notice (add or edit) ──
         if (isset($_POST['save_notice'])) {
             $payload = noticebanner_build_payload();
