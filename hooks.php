@@ -138,6 +138,13 @@ if (!class_exists('NoticeBannerHelper')) {
                 $blocks[] = ['type' => 'plain', 'text' => $line];
             }
 
+            $taskCount = 0;
+            foreach ($blocks as $b) {
+                if (($b['type'] ?? '') === 'task') {
+                    $taskCount++;
+                }
+            }
+
             $html = '<div class="nb-todo-banner-body">';
             foreach ($blocks as $b) {
                 if ($b['type'] === 'h') {
@@ -209,9 +216,17 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-todo-banner-hit .nb-todo-cb{margin-top:2px;}
 .nb-todo-banner-hit:focus-visible{outline:2px solid #6366f1;outline-offset:2px;border-radius:4px;}
 .nb-todo-banner-live .nb-todo-row:hover{background:rgba(99,102,241,0.04);}
-.nb-todo-row-accent{border-left:4px solid var(--nb-todo-accent,#6366f1);padding-left:10px;margin:6px 0;border-radius:8px;}
+.nb-todo-bracket{flex-shrink:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:700;font-size:14px;line-height:1.2;padding-top:3px;margin-right:1px;opacity:0.88;user-select:none;}
 .nb-todo-urg-pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.07);color:rgba(15,23,42,0.75);}
 .nb-todo-tag-pill{font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;background:rgba(99,102,241,0.12);color:#4338ca;margin-right:4px;}
+details.nb-todo-banner-fold{margin-top:4px;border:1px solid rgba(15,23,42,0.1);border-radius:10px;background:rgba(255,255,255,0.35);overflow:hidden;}
+details.nb-todo-banner-fold > summary.nb-todo-banner-fold-sum{list-style:none;cursor:pointer;display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:10px 12px;font-size:13px;font-weight:700;color:inherit;user-select:none;}
+details.nb-todo-banner-fold > summary::-webkit-details-marker{display:none;}
+details.nb-todo-banner-fold > summary::before{content:"▸";font-size:11px;opacity:0.55;margin-right:2px;}
+details.nb-todo-banner-fold[open] > summary::before{content:"▾";}
+.nb-todo-banner-fold-meta{font-size:12px;font-weight:600;opacity:0.65;}
+.nb-todo-banner-fold-inner{padding:2px 10px 10px 10px;}
+.nb-todo-banner-head-toggle:hover{opacity:0.92;}
 </style>';
         }
 
@@ -240,6 +255,12 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-promo-minimal .nb-promo-codebox.nb-promo-code-dark{background:#f8fafc;}
 .nb-promo-ribbon .nb-promo-headline,.nb-promo-ribbon .nb-promo-sub{color:#0f172a;}
 .nb-promo-flash{color:#fff;background:linear-gradient(90deg,#7c3aed,#6366f1,#ec4899,#6366f1,#7c3aed);background-size:200% 100%;animation:nb-promo-shimmer 4s ease-in-out infinite;box-shadow:0 8px 28px rgba(124,58,237,0.35);}
+.nb-banner-promo-root{display:block;width:100%!important;max-width:100%!important;box-sizing:border-box;clear:both;overflow:visible;}
+.nb-promo-client-slot{width:100%;max-width:100%;box-sizing:border-box;}
+.nb-promo-client-slot .nb-promo-surface{max-width:100%;}
+/* Beat aggressive client-theme resets so headline/body stay visible */
+.nb-promo-gradient .nb-promo-headline,.nb-promo-flash .nb-promo-headline,.nb-promo-neon .nb-promo-headline{color:#fff!important;}
+.nb-promo-neon .nb-promo-sub{color:#e2e8f0!important;}
 </style>';
         }
 
@@ -324,21 +345,49 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
 </script>';
         }
 
+        private static function countTodoTreeNodes(array $tree): int {
+            $n = 0;
+            foreach ($tree as $node) {
+                $n++;
+                if (!empty($node['children']) && is_array($node['children'])) {
+                    $n += self::countTodoTreeNodes($node['children']);
+                }
+            }
+            return $n;
+        }
+
+        /** Wrap checklist in collapsed-by-default &lt;details&gt; (summary shows count + expand hint). */
+        private static function wrapTodoBannerFold(string $innerBodyHtml, int $taskCount): string {
+            $hint = $taskCount === 1 ? '1 task' : $taskCount . ' tasks';
+            return '<details class="nb-todo-banner-fold">'
+                . '<summary class="nb-todo-banner-fold-sum"><span>Checklist</span> '
+                . '<span class="nb-todo-banner-fold-meta">' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8') . ' · Click to expand</span></summary>'
+                . '<div class="nb-todo-banner-fold-inner">' . $innerBodyHtml . '</div>'
+                . '</details>';
+        }
+
         /** Admin-only: checklist with real todo IDs — click circles to toggle (reloads). */
         private static function renderAdminTodoBannerInteractive(int $noticeId): string {
             if ($noticeId <= 0 || !function_exists('noticebanner_get_todos_for_notice')) {
-                return self::parseTodoBannerBody('');
+                return self::wrapTodoBannerFold(
+                    '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>',
+                    0
+                );
             }
             $tree = noticebanner_get_todos_for_notice($noticeId, self::currentAdminId());
+            $count = self::countTodoTreeNodes($tree);
             if (empty($tree)) {
-                return '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>';
+                return self::wrapTodoBannerFold(
+                    '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>',
+                    0
+                );
             }
             $html = '<div class="nb-todo-banner-body nb-todo-banner-live">';
             foreach ($tree as $task) {
                 $html .= self::renderAdminTodoNodeHtml($task, 0);
             }
             $html .= '</div>';
-            return $html;
+            return self::wrapTodoBannerFold($html, $count);
         }
 
         private static function renderAdminTodoNodeHtml(array $task, int $depth): string {
@@ -381,9 +430,10 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
                 : '<span class="nb-todo-cb nb-todo-cb-open" aria-hidden="true"></span>';
             $btn = '<button type="button" class="nb-todo-banner-hit" onclick="nbBannerTodoToggle(this,' . $id . ')" title="Toggle done">' . $cbInner . '</button>';
             $d = min(4, $depth);
-            $cls = 'nb-todo-row nb-todo-row-accent nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
+            $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
+            $bracket = '<span class="nb-todo-bracket" style="color:' . $accentEsc . ';" aria-hidden="true">[</span>';
             $metaLine = ($urgHtml !== '' || $tagsHtml !== '') ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $urgHtml . $tagsHtml . '</div>' : '';
-            $row = '<div class="' . $cls . '" style="--nb-todo-accent:' . $accentEsc . ';border-left-color:' . $accentEsc . ';">' . $btn . '<div class="nb-todo-row-main">'
+            $row = '<div class="' . $cls . '" style="--nb-todo-accent:' . $accentEsc . ';">' . $bracket . $btn . '<div class="nb-todo-row-main">'
                 . '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . '</div>'
                 . $metaLine
                 . $noteHtml . '</div></div>';
@@ -1037,11 +1087,19 @@ alert((d&&d.message)||"Could not update task");
                 }
 
                 // ── Body ──
-                $bodyTop = $isPromo ? '4px' : '10px';
-                $bodyHtml = '<div style="margin-top:' . $bodyTop . ';font-size:14px;line-height:1.7;max-width:880px;margin-left:auto;margin-right:auto;text-align:left;">'
-                    . $content . $btnHtml . $ticketHtml . $pollHtml
-                    . $tagsHtml . $assignedHtml
-                    . '</div>';
+                // Promos: full-width slot (do not squeeze card beside Ack/Dismiss — fixes client theme flex bugs)
+                $bodyTop = $isPromo ? '0' : '10px';
+                if ($isPromo) {
+                    $bodyHtml = '<div class="nb-promo-client-slot" style="margin-top:8px;font-size:14px;line-height:1.7;text-align:left;">'
+                        . $content . $btnHtml . $ticketHtml . $pollHtml
+                        . $tagsHtml . $assignedHtml
+                        . '</div>';
+                } else {
+                    $bodyHtml = '<div style="margin-top:' . $bodyTop . ';font-size:14px;line-height:1.7;max-width:880px;margin-left:auto;margin-right:auto;text-align:left;">'
+                        . $content . $btnHtml . $ticketHtml . $pollHtml
+                        . $tagsHtml . $assignedHtml
+                        . '</div>';
+                }
 
                 // ── Banner wrapper ──
                 $headerRow = $isPromo
@@ -1065,11 +1123,14 @@ alert((d&&d.message)||"Could not update task");
                     . $ackBtn;
 
                 $bannerStyle = $isPromo
-                    ? ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:8px 10px;box-shadow:none;')
+                    ? ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:10px 12px;box-shadow:none;width:100%;max-width:100%;box-sizing:border-box;clear:both;overflow:visible;')
                     : ('background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;'
                     . 'color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);');
 
-                if (!empty($n['expandable'])) {
+                // Never hide promo body behind Expand — template card must always show on client
+                $useExpandable = !empty($n['expandable']) && empty($n['is_promotion_banner']);
+
+                if ($useExpandable) {
                     $expandBtn = '<button type="button" onclick="(function(b,c){var open=c.style.display!==\'none\';c.style.display=open?\'none\':\'block\';b.textContent=open?\'Expand\':\'Collapse\';})(this,document.getElementById(\'' . $id . '_body\'))" '
                         . 'style="padding:3px 14px;font-size:13px;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;font-weight:500;">Expand</button>';
                     $controls .= $expandBtn . $dismissBtn . '</div>';
@@ -1079,6 +1140,15 @@ alert((d&&d.message)||"Could not update task");
                         . $controls
                         . '</div>'
                         . '<div id="' . $id . '_body" style="display:none;">' . $bodyHtml . '</div>'
+                        . '</div>';
+                } elseif ($isPromo) {
+                    $controls .= $dismissBtn . '</div>';
+                    $html .= '<div id="' . $id . '" class="nb-banner-promo-root" style="' . $bannerStyle . '">'
+                        . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;width:100%;box-sizing:border-box;">'
+                        . '<div style="flex:1;min-width:200px;">' . $headerRow . '</div>'
+                        . $controls
+                        . '</div>'
+                        . $bodyHtml
                         . '</div>';
                 } else {
                     $controls .= $dismissBtn . '</div>';
