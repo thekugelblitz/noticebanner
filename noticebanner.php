@@ -1006,20 +1006,13 @@ function noticebanner_todo_assigned_admin_ids($todo): array {
 }
 
 if (!function_exists('noticebanner_admin_can_access_todo_board')) {
-/** Board-level gate: empty notice assigned_admins = any admin; else must be listed. @param array|object $notice */
+/**
+ * Any logged-in admin may open a To-Do board (board-level assigned_admins is informational for the banner only).
+ *
+ * @param array|object $notice
+ */
 function noticebanner_admin_can_access_todo_board(int $adminId, $notice): bool {
-    if ($adminId <= 0 || empty($notice)) {
-        return false;
-    }
-    $json = is_array($notice) ? ($notice['assigned_admins'] ?? '[]') : ($notice->assigned_admins ?? '[]');
-    $assigned = is_string($json) ? json_decode($json, true) : $json;
-    if (!is_array($assigned)) {
-        $assigned = [];
-    }
-    if (empty($assigned)) {
-        return true;
-    }
-    return in_array($adminId, array_map('intval', $assigned), true);
+    return $adminId > 0 && !empty($notice);
 }
 }
 
@@ -1259,6 +1252,50 @@ function noticebanner_get_todos_for_notice(int $noticeId, ?int $forAdminId = nul
         return $tree;
     } catch (\Exception $e) {
         return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_count_incomplete_in_todo_tree')) {
+/** Count incomplete tasks in a tree from noticebanner_get_todos_for_notice. */
+function noticebanner_count_incomplete_in_todo_tree(array $tree): int {
+    $n = 0;
+    foreach ($tree as $node) {
+        if (empty($node['is_completed'])) {
+            $n++;
+        }
+        if (!empty($node['children']) && is_array($node['children'])) {
+            $n += noticebanner_count_incomplete_in_todo_tree($node['children']);
+        }
+    }
+    return $n;
+}
+}
+
+if (!function_exists('noticebanner_count_incomplete_todos_for_admin')) {
+/** Incomplete tasks visible to this admin (respects per-task assignees). */
+function noticebanner_count_incomplete_todos_for_admin(int $noticeId, int $adminId): int {
+    if ($noticeId <= 0 || $adminId <= 0) {
+        return 0;
+    }
+    $tree = noticebanner_get_todos_for_notice($noticeId, $adminId);
+    return noticebanner_count_incomplete_in_todo_tree($tree);
+}
+}
+
+if (!function_exists('noticebanner_count_incomplete_todos_on_notice')) {
+/** All incomplete tasks on a banner (ignores per-admin visibility). */
+function noticebanner_count_incomplete_todos_on_notice(int $noticeId): int {
+    if ($noticeId <= 0) {
+        return 0;
+    }
+    try {
+        return (int) \WHMCS\Database\Capsule::table('mod_noticebanner_todos')
+            ->where('notice_id', $noticeId)
+            ->where('is_completed', 0)
+            ->count();
+    } catch (\Exception $e) {
+        return 0;
     }
 }
 }
@@ -2534,11 +2571,6 @@ function noticebanner_output($vars) {
     $todoAdminMap = noticebanner_get_admin_name_map($todoAdminIds);
     $todoNoticeMap = noticebanner_get_notice_title_map($todoNoticeIds);
     $todoBanners = array_values(array_filter($notices, fn($n) => !empty($n['is_todo_banner'])));
-    $todoBanners = array_values(array_filter($todoBanners, function ($n) use ($currentAdminId) {
-        $assigned = is_array($n['assigned_admins'] ?? null) ? $n['assigned_admins'] : [];
-        if (empty($assigned)) return true;
-        return in_array($currentAdminId, array_map('intval', $assigned), true);
-    }));
     $nonTodo = array_values(array_filter($notices, fn($n) => empty($n['is_todo_banner'])));
     $promoBanners = array_values(array_filter($nonTodo, fn($n) => !empty($n['is_promotion_banner'])));
     $notices = array_values(array_filter($nonTodo, fn($n) => empty($n['is_promotion_banner'])));

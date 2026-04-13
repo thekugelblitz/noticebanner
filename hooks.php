@@ -943,13 +943,7 @@ alert((d&&d.message)||"Could not update task");
                      || ($area === 'client' && !empty($n['show_to_clients']));
                 if (!$show) continue;
 
-                // ── Assigned-admin gate ──
-                $assignedAdmins = $n['assigned_admins'] ?? [];
-                if ($area === 'admin' && !empty($assignedAdmins)) {
-                    if ($currentAdminId === 0 || !in_array($currentAdminId, $assignedAdmins, true)) {
-                        continue;
-                    }
-                }
+                $assignedAdmins = array_map('intval', (array)($n['assigned_admins'] ?? []));
 
                 // ── Client group gate ──
                 $clientGroups = $n['client_groups'] ?? [];
@@ -1063,9 +1057,9 @@ alert((d&&d.message)||"Could not update task");
                     $tagsHtml .= '</div>';
                 }
 
-                // ── Assigned admins footer ──
+                // ── Assigned admins footer (not on To-Do banners — collapsed summary covers assignees) ──
                 $assignedHtml = '';
-                if ($area === 'admin' && !empty($assignedAdmins)) {
+                if ($area === 'admin' && !empty($assignedAdmins) && empty($n['is_todo_banner'])) {
                     $nameMap = self::adminNames($assignedAdmins);
                     $chips   = '';
                     foreach ($assignedAdmins as $aid) {
@@ -1248,9 +1242,28 @@ alert((d&&d.message)||"Could not update task");
 
                 $todoMetaHtml = '';
                 if ($todoOuterCollapse) {
-                    $hint = $todoTaskCount === 0 ? 'Empty' : ($todoTaskCount === 1 ? '1 task' : $todoTaskCount . ' tasks');
-                    $todoMetaHtml = '<span class="nb-todo-banner-outer-meta"> · ' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8')
-                        . ' · <span class="nb-todo-fold-hint-exp">Click to expand</span><span class="nb-todo-fold-hint-col">Click to collapse</span></span>';
+                    $foldHints = ' · <span class="nb-todo-fold-hint-exp">Click to expand</span><span class="nb-todo-fold-hint-col">Click to collapse</span></span>';
+                    if ($area === 'admin' && $currentAdminId > 0 && !empty($n['is_todo_banner']) && function_exists('noticebanner_count_incomplete_todos_for_admin')) {
+                        $boardAss = $assignedAdmins;
+                        $isBannerAssignee = !empty($boardAss) && in_array($currentAdminId, $boardAss, true);
+                        $pendingYou = noticebanner_count_incomplete_todos_for_admin((int)$n['id'], $currentAdminId);
+                        $pendingAll = function_exists('noticebanner_count_incomplete_todos_on_notice')
+                            ? noticebanner_count_incomplete_todos_on_notice((int)$n['id'])
+                            : (int)$todoTaskCount;
+                        if ($isBannerAssignee) {
+                            $line = $pendingYou === 0
+                                ? 'You have no pending tasks'
+                                : ('You have ' . $pendingYou . ' pending task' . ($pendingYou === 1 ? '' : 's'));
+                        } else {
+                            $line = $pendingAll === 0
+                                ? 'No open tasks'
+                                : ($pendingAll === 1 ? '1 open task' : $pendingAll . ' open tasks');
+                        }
+                        $todoMetaHtml = '<span class="nb-todo-banner-outer-meta"> · ' . htmlspecialchars($line, ENT_QUOTES, 'UTF-8') . $foldHints;
+                    } else {
+                        $hint = $todoTaskCount === 0 ? 'Empty' : ($todoTaskCount === 1 ? '1 task' : $todoTaskCount . ' tasks');
+                        $todoMetaHtml = '<span class="nb-todo-banner-outer-meta"> · ' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8') . $foldHints;
+                    }
                 }
 
                 $dismissBtn = '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" '
