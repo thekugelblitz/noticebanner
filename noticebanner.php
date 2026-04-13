@@ -1566,6 +1566,8 @@ function noticebanner_output($vars) {
         if (isset($_POST['create_todo_banner'])) {
             $title = trim((string)($_POST['todo_banner_title'] ?? ''));
             $content = trim((string)($_POST['todo_banner_content'] ?? ''));
+            $assignedAdmins = isset($_POST['todo_banner_assigned_admins']) && is_array($_POST['todo_banner_assigned_admins'])
+                ? array_values(array_unique(array_map('intval', $_POST['todo_banner_assigned_admins']))) : [];
             if ($title === '') {
                 $message = '<div class="nb-alert nb-alert-danger">To-Do banner title is required.</div>';
             } elseif (noticebanner_free_cap_reached()) {
@@ -1597,8 +1599,8 @@ function noticebanner_output($vars) {
                         'poll_question'        => '',
                         'poll_options'         => json_encode([]),
                         'poll_results'         => json_encode([]),
-                        'assigned_admins'      => json_encode([]),
-                        'mentioned_admins'     => json_encode([]),
+                        'assigned_admins'      => json_encode($assignedAdmins),
+                        'mentioned_admins'     => json_encode($assignedAdmins),
                         'priority'             => 'normal',
                         'notice_timestamp'     => null,
                         'sort_order'           => 0,
@@ -1625,11 +1627,31 @@ function noticebanner_output($vars) {
                 }
             }
         }
+        if (isset($_POST['promote_notice_to_todo_banner'])) {
+            $noticeId = (int)($_POST['promote_notice_id'] ?? 0);
+            if ($noticeId > 0) {
+                try {
+                    \WHMCS\Database\Capsule::table('mod_noticebanner')
+                        ->where('id', $noticeId)
+                        ->where('is_template', 0)
+                        ->update([
+                            'is_todo_banner' => 1,
+                            'updated_at'     => date('Y-m-d H:i:s'),
+                        ]);
+                    noticebanner_log($noticeId, 'todo_banner_promoted', 'Promoted existing notice to To-Do banner');
+                    $message = '<div class="nb-alert nb-alert-success">Existing notice added to To-Do banners.</div>';
+                } catch (\Exception $e) {
+                    $message = '<div class="nb-alert nb-alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
+                }
+            }
+        }
         if (isset($_POST['save_todo_banner_quick'])) {
             $bannerId = (int)($_POST['todo_banner_edit_id'] ?? 0);
             $title = trim((string)($_POST['todo_banner_edit_title'] ?? ''));
             $content = trim((string)($_POST['todo_banner_edit_content'] ?? ''));
             $visibleAdmins = isset($_POST['todo_banner_edit_visible_admins']) ? 1 : 0;
+            $assignedAdmins = isset($_POST['todo_banner_edit_assigned_admins']) && is_array($_POST['todo_banner_edit_assigned_admins'])
+                ? array_values(array_unique(array_map('intval', $_POST['todo_banner_edit_assigned_admins']))) : [];
             if ($bannerId <= 0 || $title === '') {
                 $message = '<div class="nb-alert nb-alert-danger">Banner title is required.</div>';
             } else {
@@ -1642,6 +1664,8 @@ function noticebanner_output($vars) {
                             'notice_content' => $content,
                             'show_to_admins' => $visibleAdmins,
                             'show_to_clients'=> 0,
+                            'assigned_admins'=> json_encode($assignedAdmins),
+                            'mentioned_admins'=> json_encode($assignedAdmins),
                             'updated_at'     => date('Y-m-d H:i:s'),
                         ]);
                     noticebanner_log($bannerId, 'todo_banner_updated', $title);
@@ -1747,6 +1771,11 @@ function noticebanner_output($vars) {
             $id = (int)$_POST['delete_notice'];
             try {
                 $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
+                $todoIds = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('notice_id', $id)->pluck('id')->toArray();
+                if (!empty($todoIds)) {
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todo_history')->whereIn('todo_id', $todoIds)->delete();
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('notice_id', $id)->delete();
+                }
                 \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->delete();
                 \WHMCS\Database\Capsule::table('mod_noticebanner_reads')->where('notice_id', $id)->delete();
                 noticebanner_log(null, 'deleted', $row->notice_title ?? "ID $id");
@@ -1878,6 +1907,12 @@ function noticebanner_output($vars) {
     $todoNoticeMap = noticebanner_get_notice_title_map($todoNoticeIds);
     $editNoticeTodos = isset($edit_notice['id']) ? noticebanner_get_todos_for_notice((int)$edit_notice['id']) : [];
     $todoBanners = array_values(array_filter($notices, fn($n) => !empty($n['is_todo_banner'])));
+    $currentAdminId = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : 0;
+    $todoBanners = array_values(array_filter($todoBanners, function ($n) use ($currentAdminId) {
+        $assigned = is_array($n['assigned_admins'] ?? null) ? $n['assigned_admins'] : [];
+        if (empty($assigned)) return true;
+        return in_array($currentAdminId, array_map('intval', $assigned), true);
+    }));
     $notices = array_values(array_filter($notices, fn($n) => empty($n['is_todo_banner'])));
     $todoBannerRange = trim((string)($_GET['todo_banner_range'] ?? '3m'));
     $todoBannerNoticeIds = [];
