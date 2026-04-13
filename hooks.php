@@ -569,11 +569,8 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             $btn = '<button type="button" class="nb-todo-banner-hit" onclick="nbBannerTodoToggle(this,' . $id . ')" title="Toggle done">' . $cbInner . '</button>';
             $d = min(4, $depth);
             $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
-            $metaLineTagsAss = ($tagsHtml !== '' || $assHtml !== '')
-                ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $tagsHtml . $assHtml . '</div>'
-                : '';
-            $metaLine = ($urgHtml !== '' || $tagsHtml !== '' || $assHtml !== '')
-                ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $urgHtml . $tagsHtml . $assHtml . '</div>'
+            $metaLineTagsOnly = ($tagsHtml !== '')
+                ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $tagsHtml . '</div>'
                 : '';
             $rowAttr = '';
             if (!$neutralRows && $accentEsc !== '') {
@@ -583,7 +580,7 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             $hasChildren = !empty($task['children']) && is_array($task['children']);
             $childCount = $hasChildren ? count($task['children']) : 0;
 
-            $line1 = '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . '</div>';
+            $line1 = '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . $urgHtml . $assHtml . '</div>';
 
             $subHtml = '';
             if ($hasChildren) {
@@ -605,10 +602,10 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
                     ? '<span class="nb-todo-banner-task-hint"> · ' . $childCount . ' sub' . ($childCount === 1 ? '' : 's') . '</span>'
                     : '';
                 $sumLine1 = '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml
-                    . $urgHtml . $hint . '</div>';
+                    . $urgHtml . $assHtml . $hint . '</div>';
                 $sumRow = '<div class="' . $cls . ' nb-todo-banner-task-sum-row"' . $rowAttr . '>' . $btn
                     . '<div class="nb-todo-row-main">' . $sumLine1 . '</div></div>';
-                $bodyInner = $metaLineTagsAss . $noteHtml . $subtasksFold;
+                $bodyInner = $metaLineTagsOnly . $noteHtml . $subtasksFold;
                 $bodyBlock = $bodyInner !== ''
                     ? '<div class="' . $cls . ' nb-todo-banner-task-body-row"' . $rowAttr . '><div class="nb-todo-row-main">' . $bodyInner . '</div></div>'
                     : '';
@@ -620,7 +617,7 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             }
 
             $row = '<div class="' . $cls . '"' . $rowAttr . '>' . $btn . '<div class="nb-todo-row-main">'
-                . $line1 . $metaLine . $noteHtml . '</div></div>';
+                . $line1 . $metaLineTagsOnly . $noteHtml . '</div></div>';
 
             return $row . $subtasksFold;
         }

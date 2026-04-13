@@ -289,6 +289,10 @@ details.nb-todo-task-fold:not([open]) > summary::before { content: '▸ '; }
 .nb-todo-assign-chips .nb-todo-assignee-chip .nb-todo-assignee-glyph { font-weight: 800; font-size: 11px; color: #0d9488; line-height: 1; }
 .nb-todo-body-assign-row { font-size: 11px; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .nb-todo-body-assign-row .nb-assign-lbl { font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
+.nb-todo-flat-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-bottom: 8px; }
+.nb-todo-flat-head .nb-todo-flat-meta { margin-bottom: 0; }
+.nb-todo-flat-head .nb-todo-inline-assign { margin-bottom: 0; }
+.nb-todo-flat-head .nb-todo-inline-assign .nb-todo-assign-chips { display: inline-flex; }
 .nb-todo-flat-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
 .nb-todo-flat-addsub { display: grid; grid-template-columns: 1fr minmax(0,180px) auto; gap: 8px; align-items: end; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8f0; }
 @media (max-width: 720px) {
@@ -2163,18 +2167,19 @@ try {
                                     </button>
                                 </form>
                                 <div class="nb-todo-flat-main">
-                                    <div class="nb-todo-flat-meta">Task <span class="nb-priority" style="font-size:10px;padding:1px 7px;margin-left:4px;color:<?php echo htmlspecialchars($tu_pc['color'] ?? '#2563eb', ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($tu_pc['bg'] ?? '#eff6ff', ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($tu_pc['label'] ?? $tu_display); ?></span></div>
-                                    <div class="nb-todo-body-assign-row nb-todo-body-assign-chips"<?php echo empty($t_sel_ass) ? ' style="display:none;"' : ''; ?>>
-                                        <?php if (!empty($t_sel_ass)): ?>
-                                        <span class="nb-assign-lbl">Assigned</span>
-                                        <span class="nb-todo-assign-chips">
-                                            <?php foreach ($t_sel_ass as $taid): if ($taid <= 0) {
-                                                continue;
-                                            } ?>
-                                            <span class="nb-todo-assignee-chip"><span class="nb-todo-assignee-glyph" aria-hidden="true">@</span><span><?php echo htmlspecialchars($adminMap[$taid] ?? ('Admin #' . $taid)); ?></span></span>
-                                            <?php endforeach; ?>
+                                    <div class="nb-todo-flat-head">
+                                        <span class="nb-todo-flat-meta">Task <span class="nb-priority" style="font-size:10px;padding:1px 7px;margin-left:4px;color:<?php echo htmlspecialchars($tu_pc['color'] ?? '#2563eb', ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($tu_pc['bg'] ?? '#eff6ff', ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($tu_pc['label'] ?? $tu_display); ?></span></span>
+                                        <span class="nb-todo-body-assign-chips nb-todo-inline-assign" aria-label="<?php echo !empty($t_sel_ass) ? 'Assigned admins' : ''; ?>"<?php echo empty($t_sel_ass) ? ' style="display:none;"' : ''; ?>>
+                                            <?php if (!empty($t_sel_ass)): ?>
+                                            <span class="nb-todo-assign-chips">
+                                                <?php foreach ($t_sel_ass as $taid): if ($taid <= 0) {
+                                                    continue;
+                                                } ?>
+                                                <span class="nb-todo-assignee-chip"><span class="nb-todo-assignee-glyph" aria-hidden="true">@</span><span><?php echo htmlspecialchars($adminMap[$taid] ?? ('Admin #' . $taid)); ?></span></span>
+                                                <?php endforeach; ?>
+                                            </span>
+                                            <?php endif; ?>
                                         </span>
-                                        <?php endif; ?>
                                     </div>
                                     <form method="post" class="nb-todo-flat-savegrid nb-todo-ajax-form">
                                         <input type="hidden" name="nb_todo_action" value="save_todo_row">
@@ -2280,18 +2285,19 @@ try {
                                     </button>
                                 </form>
                                 <div class="nb-todo-flat-main">
-                                    <div class="nb-todo-flat-meta">Subtask <span class="nb-priority" style="font-size:10px;padding:1px 7px;margin-left:4px;color:<?php echo htmlspecialchars($su_pc['color'] ?? '#2563eb', ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($su_pc['bg'] ?? '#eff6ff', ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($su_pc['label'] ?? $su_urg); ?></span></div>
-                                    <div class="nb-todo-body-assign-row nb-todo-body-assign-chips"<?php echo empty($su_sel) ? ' style="display:none;"' : ''; ?>>
-                                        <?php if (!empty($su_sel)): ?>
-                                        <span class="nb-assign-lbl">Assigned</span>
-                                        <span class="nb-todo-assign-chips">
-                                            <?php foreach ($su_sel as $said): if ($said <= 0) {
-                                                continue;
-                                            } ?>
-                                            <span class="nb-todo-assignee-chip"><span class="nb-todo-assignee-glyph" aria-hidden="true">@</span><span><?php echo htmlspecialchars($adminMap[$said] ?? ('Admin #' . $said)); ?></span></span>
-                                            <?php endforeach; ?>
+                                    <div class="nb-todo-flat-head">
+                                        <span class="nb-todo-flat-meta">Subtask <span class="nb-priority" style="font-size:10px;padding:1px 7px;margin-left:4px;color:<?php echo htmlspecialchars($su_pc['color'] ?? '#2563eb', ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($su_pc['bg'] ?? '#eff6ff', ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($su_pc['label'] ?? $su_urg); ?></span></span>
+                                        <span class="nb-todo-body-assign-chips nb-todo-inline-assign" aria-label="<?php echo !empty($su_sel) ? 'Assigned admins' : ''; ?>"<?php echo empty($su_sel) ? ' style="display:none;"' : ''; ?>>
+                                            <?php if (!empty($su_sel)): ?>
+                                            <span class="nb-todo-assign-chips">
+                                                <?php foreach ($su_sel as $said): if ($said <= 0) {
+                                                    continue;
+                                                } ?>
+                                                <span class="nb-todo-assignee-chip"><span class="nb-todo-assignee-glyph" aria-hidden="true">@</span><span><?php echo htmlspecialchars($adminMap[$said] ?? ('Admin #' . $said)); ?></span></span>
+                                                <?php endforeach; ?>
+                                            </span>
+                                            <?php endif; ?>
                                         </span>
-                                        <?php endif; ?>
                                     </div>
                                     <form method="post" class="nb-todo-flat-savegrid nb-todo-ajax-form">
                                         <input type="hidden" name="nb_todo_action" value="save_todo_row">
@@ -2472,10 +2478,13 @@ if(!host) return;
 host.innerHTML = '';
 if(!ids.length){ host.style.display = 'none'; return; }
 host.style.display = '';
+var inline = host.classList && host.classList.contains('nb-todo-inline-assign');
+if(!inline){
 var lbl = document.createElement('span');
 lbl.className = 'nb-assign-lbl';
 lbl.textContent = 'Assigned';
 host.appendChild(lbl);
+}
 var wrap = document.createElement('span');
 wrap.className = 'nb-todo-assign-chips';
 for(var i=0;i<ids.length;i++){
