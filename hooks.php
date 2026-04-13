@@ -84,6 +84,110 @@ if (!class_exists('NoticeBannerHelper')) {
             return $t;
         }
 
+        /**
+         * To-Do banner body: render synced markdown tasks as clean rows (no raw "[ ]", no bullet quirks).
+         */
+        public static function parseTodoBannerBody(string $raw): string {
+            $raw = str_replace(["\r\n", "\r"], "\n", $raw);
+            $lines = explode("\n", $raw);
+            $blocks = [];
+            foreach ($lines as $line) {
+                $line = rtrim($line);
+                if ($line === '') {
+                    continue;
+                }
+                if (preg_match('/^###\s+(.+)$/', $line, $m)) {
+                    $blocks[] = ['type' => 'h', 'text' => $m[1]];
+                    continue;
+                }
+                if (preg_match('/^_No tasks yet\._$/i', trim($line))) {
+                    $blocks[] = ['type' => 'empty', 'text' => 'No tasks yet.'];
+                    continue;
+                }
+                if (preg_match('/^(\s*)-\s*\[([ xX])\]\s*(.+)$/', $line, $m)) {
+                    $spaces = str_replace("\t", '  ', $m[1]);
+                    $depth = min(4, (int) floor(strlen($spaces) / 2));
+                    $done = strtoupper(trim($m[2])) === 'X';
+                    $rest = $m[3];
+                    $dueLabel = '';
+                    $main = $rest;
+                    if (preg_match('/^(.+?)\s*\(Due:\s*(.+?)\)\s*$/', $rest, $dm)) {
+                        $main = trim($dm[1]);
+                        $dueLabel = trim($dm[2]);
+                    }
+                    $blocks[] = [
+                        'type'  => 'task',
+                        'depth' => $depth,
+                        'done'  => $done,
+                        'text'  => $main,
+                        'due'   => $dueLabel,
+                    ];
+                    continue;
+                }
+                $blocks[] = ['type' => 'plain', 'text' => $line];
+            }
+
+            $html = '<div class="nb-todo-banner-body">';
+            foreach ($blocks as $b) {
+                if ($b['type'] === 'h') {
+                    $html .= '<div class="nb-todo-banner-heading">' . htmlspecialchars($b['text'], ENT_QUOTES, 'UTF-8') . '</div>';
+                    continue;
+                }
+                if ($b['type'] === 'empty') {
+                    $html .= '<div class="nb-todo-banner-empty">' . htmlspecialchars($b['text'], ENT_QUOTES, 'UTF-8') . '</div>';
+                    continue;
+                }
+                if ($b['type'] === 'plain') {
+                    $html .= '<div class="nb-todo-banner-plain">' . htmlspecialchars($b['text'], ENT_QUOTES, 'UTF-8') . '</div>';
+                    continue;
+                }
+                if ($b['type'] === 'task') {
+                    $cb = $b['done']
+                        ? '<span class="nb-todo-cb nb-todo-cb-done" title="Done" aria-hidden="true">'
+                            . '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+                            . '</span>'
+                        : '<span class="nb-todo-cb nb-todo-cb-open" title="Open" aria-hidden="true"></span>';
+                    $text = htmlspecialchars($b['text'], ENT_QUOTES, 'UTF-8');
+                    $text = preg_replace(
+                        '/@([\w.-]+)/u',
+                        '<span class="nb-todo-at">@$1</span>',
+                        $text
+                    );
+                    $due = $b['due'] !== ''
+                        ? '<span class="nb-todo-due-pill">' . htmlspecialchars($b['due'], ENT_QUOTES, 'UTF-8') . '</span>'
+                        : '';
+                    $depth = (int) ($b['depth'] ?? 0);
+                    $cls = 'nb-todo-row nb-todo-depth-' . $depth . ($b['done'] ? ' nb-todo-row-done' : '');
+                    $html .= '<div class="' . $cls . '">' . $cb . '<div class="nb-todo-row-main"><span class="nb-todo-row-text">' . $text . '</span>' . $due . '</div></div>';
+                }
+            }
+            $html .= '</div>';
+            return $html;
+        }
+
+        /** Inline CSS for To-Do checklist (injected once per page when a To-Do banner renders). */
+        public static function todoBannerStyles(): string {
+            return '<style id="nb-todo-banner-css">
+.nb-todo-banner-body{font-size:14px;line-height:1.55;color:inherit;}
+.nb-todo-banner-heading{font-weight:800;font-size:15px;margin:10px 0 6px;letter-spacing:-0.02em;color:inherit;}
+.nb-todo-banner-empty{font-size:13px;opacity:0.65;font-style:italic;margin:6px 0;}
+.nb-todo-banner-plain{font-size:13px;opacity:0.8;margin:4px 0;}
+.nb-todo-row{display:flex;align-items:flex-start;gap:10px;margin:6px 0;padding:4px 0;border-radius:8px;}
+.nb-todo-depth-1{padding-left:14px;opacity:0.95;}
+.nb-todo-depth-2{padding-left:28px;opacity:0.9;}
+.nb-todo-depth-3{padding-left:42px;opacity:0.88;}
+.nb-todo-depth-4{padding-left:56px;opacity:0.86;}
+.nb-todo-row-done .nb-todo-row-text{text-decoration:line-through;opacity:0.72;}
+.nb-todo-cb{flex-shrink:0;width:18px;height:18px;margin-top:2px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;}
+.nb-todo-cb-open{border:2px solid rgba(15,23,42,0.28);background:transparent;}
+.nb-todo-cb-done{border:none;background:linear-gradient(145deg,#f97316,#ea580c);color:#fff;box-shadow:0 1px 3px rgba(234,88,12,0.45);}
+.nb-todo-row-main{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;}
+.nb-todo-row-text{word-break:break-word;}
+.nb-todo-due-pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.06);color:rgba(15,23,42,0.65);white-space:nowrap;}
+.nb-todo-at{font-weight:700;color:#4f46e5;background:rgba(99,102,241,0.12);border-radius:4px;padding:0 4px;}
+</style>';
+        }
+
         // ── Priority badge ───────────────────────────────────────────────────
         private static function priorityBadge(string $priority): string {
             $map = [
@@ -419,6 +523,7 @@ if (!class_exists('NoticeBannerHelper')) {
             $requestUri          = $_SERVER['REQUEST_URI'] ?? '';
 
             $html = '';
+            $stylePrefix = '';
             foreach ($notices as $n) {
                 // ── Audience gate ──
                 $show = ($area === 'admin' && !empty($n['show_to_admins']))
@@ -486,8 +591,15 @@ if (!class_exists('NoticeBannerHelper')) {
                 $accentMap = ['critical' => '#dc2626', 'high' => '#f97316', 'normal' => '#2563eb', 'low' => '#9ca3af'];
                 $accent    = $accentMap[$priority] ?? '#2563eb';
 
-                $title   = htmlspecialchars($n['notice_title'] ?? '');
-                $content = self::parseMarkdown($n['notice_content'] ?? '');
+                $title = htmlspecialchars($n['notice_title'] ?? '');
+                if (!empty($n['is_todo_banner'])) {
+                    if ($stylePrefix === '') {
+                        $stylePrefix = self::todoBannerStyles();
+                    }
+                    $content = self::parseTodoBannerBody($n['notice_content'] ?? '');
+                } else {
+                    $content = self::parseMarkdown($n['notice_content'] ?? '');
+                }
 
                 // ── Pinned indicator (Pro) ──
                 $pinnedHtml = ($isPro && !empty($n['is_pinned']))
@@ -826,7 +938,7 @@ function nbPollReset(btn,noticeId){
 </script>';
             }
 
-            return $html;
+            return $stylePrefix . $html;
         }
     }
 }
