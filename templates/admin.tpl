@@ -216,6 +216,10 @@ $now = date('Y-m-d H:i:s');
 /* Kanban + simplified cards */
 .nb-todo-kanban { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
 @media (max-width: 768px) { .nb-todo-kanban { grid-template-columns: 1fr; } }
+.nb-todo-kanban-all { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: 16px; align-items: start; }
+@media (max-width: 1200px) {
+  .nb-todo-kanban-all { grid-template-columns: repeat(5, minmax(200px, 1fr)); overflow-x: auto; padding-bottom: 10px; -webkit-overflow-scrolling: touch; }
+}
 .nb-todo-col { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 10px 10px 12px; min-height: 120px; }
 .nb-todo-col-h { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.07em; color: #64748b; margin: 0 0 10px 4px; display: flex; align-items: center; gap: 8px; }
 .nb-todo-col-c { background: #0f172a; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 999px; font-weight: 800; }
@@ -1806,6 +1810,19 @@ try {
         $nbTodoRangeEsc = htmlspecialchars($todoBannerRange, ENT_QUOTES, 'UTF-8');
         ?>
 
+        <?php
+        $todoKanbanQ = isset($todoKanbanQ) ? (string)$todoKanbanQ : '';
+        $todoKanbanQE = htmlspecialchars($todoKanbanQ, ENT_QUOTES, 'UTF-8');
+        $kanbanRows = $kanbanRows ?? [];
+        $kanbanBoard = $kanbanBoard ?? ['overdue' => [], 'today' => [], 'upcoming' => [], 'backlog' => [], 'done' => []];
+        $kanbanColMeta = [
+            'overdue' => ['label' => 'Overdue', 'color' => '#dc2626'],
+            'today' => ['label' => 'Due today', 'color' => '#ea580c'],
+            'upcoming' => ['label' => 'Upcoming', 'color' => '#2563eb'],
+            'backlog' => ['label' => 'Backlog', 'color' => '#64748b'],
+            'done' => ['label' => 'Done', 'color' => '#15803d'],
+        ];
+        ?>
         <div class="nb-todo-toolbar">
             <form method="get" class="nb-todo-inline-form">
                 <input type="hidden" name="module" value="noticebanner">
@@ -1820,11 +1837,74 @@ try {
                         <option value="all" <?php echo ($todoBannerRange === 'all') ? 'selected' : ''; ?>>All time</option>
                     </select>
                 </div>
+                <div class="nb-field" style="margin:0;min-width:220px;">
+                    <label>Search all tasks</label>
+                    <input type="search" name="todo_kanban_q" value="<?php echo $todoKanbanQE; ?>" placeholder="Title, notes, tags…" autocomplete="off">
+                </div>
                 <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Apply</button>
             </form>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button type="button" class="nb-btn nb-btn-primary nb-btn-sm" onclick="nbToggleSection('nb-new-banner-body','nb-new-banner-toggle')">+ New banner</button>
                 <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="nbToggleSection('nb-promote-banner-body','nb-promote-banner-toggle')">Use existing notice</button>
+            </div>
+        </div>
+
+        <div style="margin-top:8px;padding:14px 16px;border:1px solid #e2e8f0;border-radius:12px;background:linear-gradient(180deg,#fafbff 0%,#fff 100%);">
+            <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#6366f1;margin-bottom:10px;">Kanban — all boards</div>
+            <p style="margin:0 0 12px;font-size:12px;color:#64748b;line-height:1.45;">Tasks and subtasks in the selected time window. Search filters cards by title, remarks, or task tags (backend). Empty columns stay hidden when searching.</p>
+            <?php if ($todoKanbanQ !== '' && empty($kanbanRows)): ?>
+            <div class="nb-alert nb-alert-warning" style="margin-bottom:12px;">No tasks match your search in this time window.</div>
+            <?php endif; ?>
+            <div class="nb-todo-kanban-all">
+                <?php foreach ($kanbanColMeta as $colKey => $meta): ?>
+                    <?php $colRows = $kanbanBoard[$colKey] ?? []; ?>
+                    <?php if ($todoKanbanQ !== '' && empty($colRows)) { continue; } ?>
+                <div class="nb-todo-col" style="border-top:3px solid <?php echo htmlspecialchars($meta['color'], ENT_QUOTES, 'UTF-8'); ?>;">
+                    <div class="nb-todo-col-h">
+                        <?php echo htmlspecialchars($meta['label']); ?>
+                        <span class="nb-todo-col-c"><?php echo count($colRows); ?></span>
+                    </div>
+                    <?php foreach ($colRows as $kc): ?>
+                        <?php
+                        $kNid = (int)$kc['notice_id'];
+                        $qOpen = ['module' => 'noticebanner', 'todo_banner_range' => $todoBannerRange, 'todo_notice_id' => $kNid];
+                        if ($todoKanbanQ !== '') {
+                            $qOpen['todo_kanban_q'] = $todoKanbanQ;
+                        }
+                        $kHref = 'addonmodules.php?' . http_build_query($qOpen) . '#nb-todo-banners';
+                        $boardTitle = $todoNoticeMap[$kNid] ?? ('Board #' . $kNid);
+                        $isSub = !empty($kc['parent_todo_id']);
+                        $dueStr = '';
+                        if (!empty($kc['due_at'])) {
+                            $dueStr = date('M j, Y', strtotime((string)$kc['due_at']));
+                        }
+                        ?>
+                    <div class="nb-todo-card-v2<?php echo !empty($kc['is_completed']) ? ' nb-muted' : ''; ?>">
+                        <div class="nb-todo-card-v2-head">
+                            <div style="flex:1;min-width:0;">
+                                <?php if ($isSub): ?>
+                                <div style="font-size:10px;font-weight:800;color:#6366f1;text-transform:uppercase;letter-spacing:0.04em;margin-bottom:2px;">Subtask</div>
+                                <?php endif; ?>
+                                <div class="nb-todo-card-v2-title<?php echo !empty($kc['is_completed']) ? ' done' : ''; ?>"><?php echo htmlspecialchars($kc['title'] ?? ''); ?></div>
+                                <div style="font-size:11px;color:#64748b;margin-top:4px;"><?php echo htmlspecialchars($boardTitle); ?></div>
+                                <?php if ($dueStr !== ''): ?>
+                                <span class="nb-todo-date-pill<?php
+                                $b = $kc['status_bucket'] ?? '';
+                                echo $b === 'overdue' ? ' overdue' : ($b === 'due_today' ? ' due-soon' : '');
+                                ?>" style="margin-top:6px;"><?php echo htmlspecialchars($dueStr); ?></span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                        <div class="nb-todo-actions">
+                            <a class="nb-btn nb-btn-ghost nb-btn-sm" href="<?php echo htmlspecialchars($kHref, ENT_QUOTES, 'UTF-8'); ?>">Open board</a>
+                        </div>
+                    </div>
+                    <?php endforeach; ?>
+                    <?php if (empty($colRows) && $todoKanbanQ === ''): ?>
+                    <div style="font-size:12px;color:#94a3b8;padding:6px 4px;">—</div>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
             </div>
         </div>
 
@@ -1884,7 +1964,7 @@ try {
                         }
                         ?>
                         <a class="nb-todo-side-item<?php echo $active ? ' active' : ''; ?>"
-                           href="addonmodules.php?module=noticebanner&amp;todo_banner_range=<?php echo urlencode($todoBannerRange); ?>&amp;todo_notice_id=<?php echo (int)$tb['id']; ?>#nb-todo-banners">
+                           href="addonmodules.php?module=noticebanner&amp;todo_banner_range=<?php echo urlencode($todoBannerRange); ?>&amp;todo_notice_id=<?php echo (int)$tb['id']; ?><?php echo ($todoKanbanQ !== '') ? '&amp;todo_kanban_q=' . urlencode($todoKanbanQ) : ''; ?>#nb-todo-banners">
                             <div style="font-size:13px;font-weight:700;line-height:1.35;"><?php echo htmlspecialchars($tb['notice_title']); ?></div>
                             <div style="font-size:11px;color:#64748b;margin-top:3px;"><?php echo (int)$tbOpen; ?> open</div>
                         </a>

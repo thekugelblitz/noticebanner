@@ -1323,6 +1323,39 @@ function noticebanner_get_todos_flat(array $filters = []): array {
         if ($completedFrom !== '') $q->where('completed_at', '>=', date('Y-m-d 00:00:00', strtotime($completedFrom)));
         if ($completedTo !== '') $q->where('completed_at', '<=', date('Y-m-d 23:59:59', strtotime($completedTo)));
 
+        if (!empty($filters['only_todo_banners'])) {
+            $bannerIds = \WHMCS\Database\Capsule::table('mod_noticebanner')
+                ->where('is_todo_banner', 1)
+                ->pluck('id')
+                ->all();
+            $bannerIds = array_map('intval', (array)$bannerIds);
+            if (empty($bannerIds)) {
+                return [];
+            }
+            $q->whereIn('notice_id', $bannerIds);
+        }
+
+        $limitNoticeIds = $filters['limit_notice_ids'] ?? null;
+        if (is_array($limitNoticeIds) && $limitNoticeIds !== []) {
+            $lim = array_values(array_unique(array_filter(array_map('intval', $limitNoticeIds))));
+            if (!empty($lim)) {
+                $q->whereIn('notice_id', $lim);
+            }
+        }
+
+        $createdRange = trim((string)($filters['created_range'] ?? ''));
+        if ($createdRange === '3m') {
+            $q->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-3 months')));
+        } elseif ($createdRange === '6m') {
+            $q->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-6 months')));
+        }
+
+        $search = trim((string)($filters['search'] ?? ''));
+        if ($search !== '') {
+            $term = '%' . addcslashes($search, '%_\\') . '%';
+            $q->whereRaw('(title LIKE ? OR remarks LIKE ? OR tags LIKE ?)', [$term, $term, $term]);
+        }
+
         $rows = $q->get()->toArray();
         $out = [];
         foreach ($rows as $row) {
@@ -1338,12 +1371,37 @@ function noticebanner_get_todos_flat(array $filters = []): array {
             $item['accent_color'] = !empty($item['accent_color']) ? (string)$item['accent_color'] : null;
             $item['tags'] = !empty($item['tags']) ? (string)$item['tags'] : null;
             $item['status_bucket'] = noticebanner_todo_status_bucket($item);
+            $item['kanban_col'] = noticebanner_todo_kanban_column($item);
             $out[] = $item;
         }
         return $out;
     } catch (\Exception $e) {
         return [];
     }
+}
+}
+
+if (!function_exists('noticebanner_todo_kanban_column')) {
+/**
+ * Kanban column key for a flat todo row (tasks and subtasks).
+ *
+ * @return string overdue|today|upcoming|backlog|done
+ */
+function noticebanner_todo_kanban_column(array $todo): string {
+    if (!empty($todo['is_completed'])) {
+        return 'done';
+    }
+    $b = isset($todo['status_bucket']) ? (string)$todo['status_bucket'] : noticebanner_todo_status_bucket($todo);
+    if ($b === 'overdue') {
+        return 'overdue';
+    }
+    if ($b === 'due_today') {
+        return 'today';
+    }
+    if ($b === 'upcoming') {
+        return 'upcoming';
+    }
+    return 'backlog';
 }
 }
 
@@ -2587,6 +2645,30 @@ function noticebanner_output($vars) {
     $promoBanners = array_values(array_filter($nonTodo, fn($n) => !empty($n['is_promotion_banner'])));
     $notices = array_values(array_filter($nonTodo, fn($n) => empty($n['is_promotion_banner'])));
     $todoBannerRange = trim((string)($_GET['todo_banner_range'] ?? '3m'));
+    $todoKanbanQ = trim((string)($_GET['todo_kanban_q'] ?? ''));
+    $kanbanRange = in_array($todoBannerRange, ['3m', '6m', 'all'], true) ? $todoBannerRange : '3m';
+    $kanbanFilters = [
+        'status' => 'all',
+        'only_todo_banners' => true,
+        'created_range' => $kanbanRange,
+    ];
+    if ($todoKanbanQ !== '') {
+        $kanbanFilters['search'] = $todoKanbanQ;
+    }
+    $kanbanRows = noticebanner_filter_todo_flat_rows_for_admin(
+        noticebanner_get_todos_flat($kanbanFilters),
+        $currentAdminId
+    );
+    $kanbanBoard = ['overdue' => [], 'today' => [], 'upcoming' => [], 'backlog' => [], 'done' => []];
+    foreach ($kanbanRows as $kr) {
+        $c = $kr['kanban_col'] ?? noticebanner_todo_kanban_column($kr);
+        if (!isset($kanbanBoard[$c])) {
+            $c = 'backlog';
+        }
+        $kanbanBoard[$c][] = $kr;
+    }
+    $kanbanNoticeIds = array_unique(array_map(static fn($r) => (int)$r['notice_id'], $kanbanRows));
+    $todoNoticeMap = array_merge($todoNoticeMap, noticebanner_get_notice_title_map(array_values($kanbanNoticeIds)));
     $todoBannerNoticeIds = [];
     try {
         $q = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->select('notice_id')->distinct();

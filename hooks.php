@@ -242,14 +242,24 @@ details.nb-todo-banner-sub-fold[open] > summary.nb-todo-banner-sub-sum::before{c
 .nb-todo-banner-sub-meta{font-weight:700;opacity:0.75;text-transform:none;letter-spacing:0;}
 .nb-todo-banner-sub-body{padding:4px 8px 10px 10px;}
 details.nb-todo-banner-outer{display:block;width:100%;box-sizing:border-box;}
-details.nb-todo-banner-outer > summary.nb-todo-banner-outer-sum{list-style:none;cursor:pointer;user-select:none;display:flex;align-items:flex-start;gap:8px;width:100%;box-sizing:border-box;}
+details.nb-todo-banner-outer > summary.nb-todo-banner-outer-sum{list-style:none;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;width:100%;box-sizing:border-box;padding:0;margin:0;min-height:0;}
 details.nb-todo-banner-outer > summary::-webkit-details-marker{display:none;}
-details.nb-todo-banner-outer > summary.nb-todo-banner-outer-sum::before{content:"▸";flex-shrink:0;font-size:11px;opacity:0.55;line-height:1.5;margin-top:3px;}
+details.nb-todo-banner-outer > summary.nb-todo-banner-outer-sum::before{content:"▸";flex-shrink:0;font-size:10px;opacity:0.55;line-height:1;margin-top:0;align-self:center;}
 details.nb-todo-banner-outer[open] > summary.nb-todo-banner-outer-sum::before{content:"▾";}
-.nb-todo-banner-outer-meta{font-size:12px;font-weight:600;opacity:0.65;}
+.nb-todo-banner-outer-meta{font-size:11px;font-weight:600;opacity:0.65;line-height:1.3;}
 details.nb-todo-banner-outer:not([open]) .nb-todo-fold-hint-col{display:none;}
 details.nb-todo-banner-outer[open] .nb-todo-fold-hint-exp{display:none;}
-.nb-todo-banner-outer-body{padding-top:8px;margin-top:4px;border-top:1px solid rgba(15,23,42,0.08);}
+.nb-todo-banner-outer-body{padding-top:6px;margin-top:2px;border-top:1px solid rgba(15,23,42,0.08);}
+.nb-todo-banner-outer-row .nb-todo-banner-outer-meta{white-space:normal;word-break:break-word;}
+a.nb-todo-banner-manage svg{width:15px;height:15px;}
+@media (max-width:640px){
+a.nb-todo-banner-manage{padding:4px!important;border-radius:4px!important;}
+a.nb-todo-banner-manage svg{width:14px;height:14px;}
+details.nb-todo-banner-outer[style]{padding:4px 8px 4px 10px!important;}
+.nb-todo-banner-outer-row{gap:4px!important;}
+details.nb-todo-banner-outer .nb-todo-banner-outer-meta{font-size:10px!important;line-height:1.35!important;}
+.nb-todo-banner-outer-body{padding-top:5px;margin-top:2px;}
+}
 </style>';
         }
 
@@ -1120,9 +1130,9 @@ alert((d&&d.message)||"Could not update task");
                         . '</span>';
                 }
 
-                // ── Tags (Pro) ──
+                // ── Tags (Pro) — not on To-Do banners (checklist carries task tags; avoids duplicate #chips like #todo) ──
                 $tagsHtml = '';
-                if ($isPro && !empty($n['tags'])) {
+                if ($isPro && !empty($n['tags']) && empty($n['is_todo_banner'])) {
                     $tagsHtml = '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
                     foreach (array_map('trim', explode(',', $n['tags'])) as $tag) {
                         if ($tag === '') continue;
@@ -1156,9 +1166,9 @@ alert((d&&d.message)||"Could not update task");
                     $todoMgrUrl = function_exists('noticebanner_admin_todo_redirect_url')
                         ? noticebanner_admin_todo_redirect_url((int)$n['id'], 'all')
                         : ('addonmodules.php?module=noticebanner&todo_banner_range=all&todo_notice_id=' . (int)$n['id'] . '#nb-todo-banners');
-                    $ackBtn = '<a href="' . htmlspecialchars($todoMgrUrl, ENT_QUOTES, 'UTF-8') . '"'
+                    $ackBtn = '<a class="nb-todo-banner-manage" href="' . htmlspecialchars($todoMgrUrl, ENT_QUOTES, 'UTF-8') . '"'
                         . ' title="Manage tasks" aria-label="Manage tasks"'
-                        . ' style="padding:7px;border-radius:6px;background:#312e81;color:#eef2ff;border:1px solid #1e1b4b;flex-shrink:0;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:0;box-sizing:border-box;">'
+                        . ' style="padding:5px;border-radius:5px;background:#312e81;color:#eef2ff;border:1px solid #1e1b4b;flex-shrink:0;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:0;box-sizing:border-box;">'
                         . '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
                         . '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
                         . '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
@@ -1306,14 +1316,15 @@ alert((d&&d.message)||"Could not update task");
                 }
 
                 // ── Banner wrapper ──
+                $todoTitleCompact = !empty($n['is_todo_banner']) && !$isPromo;
                 $headerRow = $isPromo
                     ? '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;">'
                         . '<span style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#7c3aed;">Promotion</span>'
                         . $pinnedHtml
                         . $tsHtml
                         . '</div>'
-                    : '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">'
-                        . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
+                    : '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:' . ($todoTitleCompact ? '4px' : '6px') . ';">'
+                        . '<span style="font-size:' . ($todoTitleCompact ? '14px' : '16px') . ';font-weight:700;line-height:1.25;">' . $title . '</span>'
                         . (empty($n['is_todo_banner']) ? self::priorityBadge($priority) : '')
                         . $pinnedHtml
                         . $tsHtml
@@ -1345,8 +1356,9 @@ alert((d&&d.message)||"Could not update task");
                     }
                 }
 
+                $dismissPad = (!empty($n['is_todo_banner']) && !$isPromo) ? '2px 7px' : '3px 10px';
                 $dismissBtn = '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" '
-                    . 'style="padding:3px 10px;font-size:16px;line-height:1;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;flex-shrink:0;" title="Dismiss">&times;</button>';
+                    . 'style="padding:' . $dismissPad . ';font-size:15px;line-height:1;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;flex-shrink:0;" title="Dismiss">&times;</button>';
 
                 // Controls: Acknowledge + optional Expand + Dismiss — always top-right
                 $controls = '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;">'
@@ -1356,12 +1368,14 @@ alert((d&&d.message)||"Could not update task");
                 if (!empty($n['is_todo_banner']) && !$isPromo) {
                     $stripBorder = self::todoBannerLeftBorderColor($bg, $accent);
                 }
+                $isTodoStrip = !empty($n['is_todo_banner']) && !$isPromo;
                 $bannerStyle = $isPromo
                     ? ($area === 'client'
                         ? ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:0;margin:0;box-shadow:none;width:100%;max-width:100%;box-sizing:border-box;clear:both;overflow:visible;')
                         : ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:10px 12px;box-shadow:none;width:100%;max-width:100%;box-sizing:border-box;clear:both;overflow:visible;'))
-                    : ('background:' . $bg . ';border-left:4px solid ' . $stripBorder . ';padding:12px 20px;'
-                    . 'color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);');
+                    : ('background:' . $bg . ';border-left:4px solid ' . $stripBorder . ';'
+                    . ($isTodoStrip ? 'padding:5px 10px 5px 12px;box-shadow:0 1px 4px rgba(0,0,0,0.05);' : 'padding:12px 20px;box-shadow:0 2px 8px rgba(0,0,0,0.06);')
+                    . 'color:' . $color . ';position:relative;z-index:99999;');
 
                 // Never hide promo body behind Expand — template card must always show on client
                 $useExpandable = !empty($n['expandable']) && empty($n['is_promotion_banner']);
@@ -1439,8 +1453,8 @@ alert((d&&d.message)||"Could not update task");
                         $todoDetailsClass = ($area === 'client' ? 'nb-client-notice-bar ' : '') . 'nb-todo-banner-outer';
                         $html .= '<details id="' . $id . '" class="' . htmlspecialchars($todoDetailsClass, ENT_QUOTES, 'UTF-8') . '" style="' . $bannerStyle . '">'
                             . '<summary class="nb-todo-banner-outer-sum">'
-                            . '<div style="flex:1;min-width:0;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;box-sizing:border-box;">'
-                            . '<div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">'
+                            . '<div class="nb-todo-banner-outer-row" style="flex:1;min-width:0;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;box-sizing:border-box;">'
+                            . '<div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:4px;">'
                             . $headerRow . $todoMetaHtml
                             . '</div>'
                             . $controls
