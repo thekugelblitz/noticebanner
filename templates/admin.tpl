@@ -250,7 +250,7 @@ $now = date('Y-m-d H:i:s');
 .nb-todo-flat-toggle { margin-top: 4px; }
 .nb-todo-flat-main { min-width: 0; }
 .nb-todo-flat-savegrid { display: grid; grid-template-columns: 1fr; gap: 8px; }
-.nb-todo-flat-savegrid .nb-todo-flat-line2 { display: grid; grid-template-columns: minmax(0,200px) 1fr auto; gap: 8px; align-items: end; }
+.nb-todo-flat-savegrid .nb-todo-flat-line2 { display: grid; grid-template-columns: minmax(0,220px) auto; gap: 8px; align-items: end; justify-content: flex-start; }
 @media (max-width: 720px) {
   .nb-todo-flat-savegrid .nb-todo-flat-line2 { grid-template-columns: 1fr; }
 }
@@ -260,6 +260,12 @@ $now = date('Y-m-d H:i:s');
 @media (max-width: 720px) {
   .nb-todo-flat-addsub { grid-template-columns: 1fr; }
 }
+#nb-wrap .nb-todo-note-details { margin-top: 6px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fafbff; padding: 0 10px 8px; }
+#nb-wrap .nb-todo-note-details summary { list-style: none; padding: 8px 0; font-size: 12px; font-weight: 600; color: #64748b; cursor: pointer; user-select: none; }
+#nb-wrap .nb-todo-note-details summary::-webkit-details-marker { display: none; }
+#nb-wrap .nb-todo-note-details summary::before { content: '▸ '; font-size: 10px; opacity: 0.7; }
+#nb-wrap .nb-todo-note-details[open] summary::before { content: '▾ '; }
+#nb-wrap .nb-todo-note-details .nb-field textarea { min-height: 56px; font-size: 13px; }
 
 /* ── Tag chip ── */
 .nb-tag { display: inline-flex; align-items: center; gap: 3px; background: rgba(99,102,241,0.1); color: #4338ca; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600; margin: 2px; cursor: pointer; }
@@ -1676,14 +1682,17 @@ try {
                                             <label style="font-size:12px;">Title</label>
                                             <input type="text" name="todo_title" required value="<?php echo htmlspecialchars($todo['title'] ?? ''); ?>">
                                         </div>
+                                        <details class="nb-todo-note-details">
+                                            <summary>Note<?php echo trim((string)($todo['remarks'] ?? '')) !== '' ? ' (has text)' : ''; ?></summary>
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Note / remarks</label>
+                                                <textarea name="todo_remarks" rows="2" placeholder="Shown on the banner under the task"><?php echo htmlspecialchars($todo['remarks'] ?? ''); ?></textarea>
+                                            </div>
+                                        </details>
                                         <div class="nb-todo-flat-line2">
                                             <div class="nb-field" style="margin:0;">
                                                 <label style="font-size:12px;">Due</label>
                                                 <input type="datetime-local" name="todo_due_at" value="<?php echo !empty($todo['due_at']) ? date('Y-m-d\TH:i', strtotime($todo['due_at'])) : ''; ?>">
-                                            </div>
-                                            <div class="nb-field" style="margin:0;">
-                                                <label style="font-size:12px;">Note</label>
-                                                <input type="text" name="todo_remarks" value="<?php echo htmlspecialchars($todo['remarks'] ?? ''); ?>" placeholder="Optional">
                                             </div>
                                             <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Save</button>
                                         </div>
@@ -1741,14 +1750,17 @@ try {
                                             <label style="font-size:12px;">Title</label>
                                             <input type="text" name="todo_title" required value="<?php echo htmlspecialchars($sub['title'] ?? ''); ?>">
                                         </div>
+                                        <details class="nb-todo-note-details">
+                                            <summary>Note<?php echo trim((string)($sub['remarks'] ?? '')) !== '' ? ' (has text)' : ''; ?></summary>
+                                            <div class="nb-field" style="margin:0;">
+                                                <label style="font-size:12px;">Note / remarks</label>
+                                                <textarea name="todo_remarks" rows="2" placeholder="Shown on the banner under the subtask"><?php echo htmlspecialchars($sub['remarks'] ?? ''); ?></textarea>
+                                            </div>
+                                        </details>
                                         <div class="nb-todo-flat-line2">
                                             <div class="nb-field" style="margin:0;">
                                                 <label style="font-size:12px;">Due</label>
                                                 <input type="datetime-local" name="todo_due_at" value="<?php echo !empty($sub['due_at']) ? date('Y-m-d\TH:i', strtotime($sub['due_at'])) : ''; ?>">
-                                            </div>
-                                            <div class="nb-field" style="margin:0;">
-                                                <label style="font-size:12px;">Note</label>
-                                                <input type="text" name="todo_remarks" value="<?php echo htmlspecialchars($sub['remarks'] ?? ''); ?>" placeholder="Optional">
                                             </div>
                                             <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Save</button>
                                         </div>

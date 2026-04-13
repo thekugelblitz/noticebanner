@@ -988,14 +988,19 @@ function noticebanner_get_todos_for_notice(int $noticeId): array {
             $item['status_bucket'] = noticebanner_todo_status_bucket($item);
             $todos[$item['id']] = $item;
         }
-        $tree = [];
-        foreach ($todos as $id => $todo) {
-            $parentId = $todo['parent_todo_id'];
+        // Attach children by reference so nested rows stay linked (root copies used to drop subtasks).
+        foreach (array_keys($todos) as $cid) {
+            $parentId = $todos[$cid]['parent_todo_id'] ?? null;
             if ($parentId && isset($todos[$parentId])) {
-                $todos[$parentId]['children'][] = $todo;
-                continue;
+                $todos[$parentId]['children'][] = &$todos[$cid];
             }
-            $tree[] = $todo;
+        }
+        unset($cid);
+        $tree = [];
+        foreach (array_keys($todos) as $cid) {
+            if (empty($todos[$cid]['parent_todo_id'])) {
+                $tree[] = $todos[$cid];
+            }
         }
         return $tree;
     } catch (\Exception $e) {
@@ -1141,7 +1146,7 @@ function noticebanner_sync_todo_banner_content(int $noticeId): void {
             ->orderBy('parent_todo_id', 'asc')
             ->orderBy('sort_order', 'asc')
             ->orderBy('id', 'asc')
-            ->get(['id', 'parent_todo_id', 'title', 'is_completed', 'due_at'])
+            ->get(['id', 'parent_todo_id', 'title', 'is_completed', 'due_at', 'remarks'])
             ->all();
 
         $parents = [];
@@ -1150,9 +1155,13 @@ function noticebanner_sync_todo_banner_content(int $noticeId): void {
             $completed = (int)$todoVal($r, 'is_completed');
             $title = trim((string)$todoVal($r, 'title'));
             $dueRaw = $todoVal($r, 'due_at');
+            $remarks = trim((string)($todoVal($r, 'remarks') ?? ''));
             $line = ($completed ? '- [x] ' : '- [ ] ') . $title;
             if (!empty($dueRaw)) {
                 $line .= ' (Due: ' . date('M j, Y g:ia', strtotime((string)$dueRaw)) . ')';
+            }
+            if ($remarks !== '') {
+                $line .= ' · Note: ' . preg_replace('/\s+/u', ' ', $remarks);
             }
             $parentId = $todoVal($r, 'parent_todo_id');
             $rowId = (int)$todoVal($r, 'id');

@@ -110,6 +110,13 @@ if (!class_exists('NoticeBannerHelper')) {
                     $depth = min(4, (int) floor(strlen($spaces) / 2));
                     $done = strtoupper(trim($m[2])) === 'X';
                     $rest = $m[3];
+                    $noteLabel = '';
+                    $noteMark = ' · Note: ';
+                    $p = strrpos($rest, $noteMark);
+                    if ($p !== false) {
+                        $noteLabel = trim(substr($rest, $p + strlen($noteMark)));
+                        $rest = trim(substr($rest, 0, $p));
+                    }
                     $dueLabel = '';
                     $main = $rest;
                     if (preg_match('/^(.+?)\s*\(Due:\s*(.+?)\)\s*$/', $rest, $dm)) {
@@ -122,6 +129,7 @@ if (!class_exists('NoticeBannerHelper')) {
                         'done'  => $done,
                         'text'  => $main,
                         'due'   => $dueLabel,
+                        'note'  => $noteLabel,
                     ];
                     continue;
                 }
@@ -157,9 +165,15 @@ if (!class_exists('NoticeBannerHelper')) {
                     $due = $b['due'] !== ''
                         ? '<span class="nb-todo-due-pill">' . htmlspecialchars($b['due'], ENT_QUOTES, 'UTF-8') . '</span>'
                         : '';
+                    $noteRaw = trim((string)($b['note'] ?? ''));
+                    $noteHtml = $noteRaw !== ''
+                        ? '<div class="nb-todo-note">' . htmlspecialchars($noteRaw, ENT_QUOTES, 'UTF-8') . '</div>'
+                        : '';
                     $depth = (int) ($b['depth'] ?? 0);
                     $cls = 'nb-todo-row nb-todo-depth-' . $depth . ($b['done'] ? ' nb-todo-row-done' : '');
-                    $html .= '<div class="' . $cls . '">' . $cb . '<div class="nb-todo-row-main"><span class="nb-todo-row-text">' . $text . '</span>' . $due . '</div></div>';
+                    $html .= '<div class="' . $cls . '">' . $cb . '<div class="nb-todo-row-main">'
+                        . '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $text . '</span>' . $due . '</div>'
+                        . $noteHtml . '</div></div>';
                 }
             }
             $html .= '</div>';
@@ -182,8 +196,11 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-todo-cb{flex-shrink:0;width:18px;height:18px;margin-top:2px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;}
 .nb-todo-cb-open{border:2px solid rgba(15,23,42,0.28);background:transparent;}
 .nb-todo-cb-done{border:none;background:linear-gradient(145deg,#f97316,#ea580c);color:#fff;box-shadow:0 1px 3px rgba(234,88,12,0.45);}
-.nb-todo-row-main{flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;}
+.nb-todo-row-main{flex:1;min-width:0;display:flex;flex-direction:column;align-items:stretch;gap:4px;}
+.nb-todo-row-line1{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;}
 .nb-todo-row-text{word-break:break-word;}
+.nb-todo-note{font-size:12px;line-height:1.45;opacity:0.88;margin:0;padding:5px 0 2px 0;border-top:1px dashed rgba(15,23,42,0.1);width:100%;word-break:break-word;}
+.nb-todo-row-done .nb-todo-note{text-decoration:none;opacity:0.72;}
 .nb-todo-due-pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.06);color:rgba(15,23,42,0.65);white-space:nowrap;}
 .nb-todo-at{font-weight:700;color:#4f46e5;background:rgba(99,102,241,0.12);border-radius:4px;padding:0 4px;}
 .nb-todo-banner-hit{background:none;border:none;padding:0;margin:0;cursor:pointer;display:inline-flex;align-items:flex-start;line-height:0;}
@@ -220,13 +237,19 @@ if (!class_exists('NoticeBannerHelper')) {
             if (!empty($task['due_at'])) {
                 $dueHtml = '<span class="nb-todo-due-pill">' . htmlspecialchars(date('M j, Y g:ia', strtotime($task['due_at'])), ENT_QUOTES, 'UTF-8') . '</span>';
             }
+            $remarks = trim((string)($task['remarks'] ?? ''));
+            $noteHtml = $remarks !== ''
+                ? '<div class="nb-todo-note">' . htmlspecialchars($remarks, ENT_QUOTES, 'UTF-8') . '</div>'
+                : '';
             $cbInner = $done
                 ? '<span class="nb-todo-cb nb-todo-cb-done" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
                 : '<span class="nb-todo-cb nb-todo-cb-open" aria-hidden="true"></span>';
             $btn = '<button type="button" class="nb-todo-banner-hit" onclick="nbBannerTodoToggle(this,' . $id . ')" title="Toggle done">' . $cbInner . '</button>';
             $d = min(4, $depth);
             $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
-            $row = '<div class="' . $cls . '">' . $btn . '<div class="nb-todo-row-main"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . '</div></div>';
+            $row = '<div class="' . $cls . '">' . $btn . '<div class="nb-todo-row-main">'
+                . '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . '</div>'
+                . $noteHtml . '</div></div>';
             $sub = '';
             if (!empty($task['children']) && is_array($task['children'])) {
                 foreach ($task['children'] as $ch) {
