@@ -12,6 +12,7 @@ add_hook('ClientAreaPage', 1, function ($vars) {
     NoticeBannerHelper::handlePollVotePost();
 });
 add_hook('AdminAreaPage', 1, function ($vars) {
+    NoticeBannerHelper::handleBannerTodoPost();
     NoticeBannerHelper::handleAcknowledgePost('admin');
     NoticeBannerHelper::handlePollVotePost();
 });
@@ -185,7 +186,75 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-todo-row-text{word-break:break-word;}
 .nb-todo-due-pill{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.06);color:rgba(15,23,42,0.65);white-space:nowrap;}
 .nb-todo-at{font-weight:700;color:#4f46e5;background:rgba(99,102,241,0.12);border-radius:4px;padding:0 4px;}
+.nb-todo-banner-hit{background:none;border:none;padding:0;margin:0;cursor:pointer;display:inline-flex;align-items:flex-start;line-height:0;}
+.nb-todo-banner-hit .nb-todo-cb{margin-top:2px;}
+.nb-todo-banner-hit:focus-visible{outline:2px solid #6366f1;outline-offset:2px;border-radius:4px;}
+.nb-todo-banner-live .nb-todo-row:hover{background:rgba(99,102,241,0.04);}
 </style>';
+        }
+
+        /** Admin-only: checklist with real todo IDs — click circles to toggle (reloads). */
+        private static function renderAdminTodoBannerInteractive(int $noticeId): string {
+            if ($noticeId <= 0 || !function_exists('noticebanner_get_todos_for_notice')) {
+                return self::parseTodoBannerBody('');
+            }
+            $tree = noticebanner_get_todos_for_notice($noticeId);
+            if (empty($tree)) {
+                return '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>';
+            }
+            $html = '<div class="nb-todo-banner-body nb-todo-banner-live">';
+            foreach ($tree as $task) {
+                $html .= self::renderAdminTodoNodeHtml($task, 0);
+            }
+            $html .= '</div>';
+            return $html;
+        }
+
+        private static function renderAdminTodoNodeHtml(array $task, int $depth): string {
+            $id = (int)($task['id'] ?? 0);
+            $done = !empty($task['is_completed']);
+            $titleRaw = (string)($task['title'] ?? '');
+            $title = htmlspecialchars($titleRaw, ENT_QUOTES, 'UTF-8');
+            $title = preg_replace('/@([\w.-]+)/u', '<span class="nb-todo-at">@$1</span>', $title);
+            $dueHtml = '';
+            if (!empty($task['due_at'])) {
+                $dueHtml = '<span class="nb-todo-due-pill">' . htmlspecialchars(date('M j, Y g:ia', strtotime($task['due_at'])), ENT_QUOTES, 'UTF-8') . '</span>';
+            }
+            $cbInner = $done
+                ? '<span class="nb-todo-cb nb-todo-cb-done" aria-hidden="true"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>'
+                : '<span class="nb-todo-cb nb-todo-cb-open" aria-hidden="true"></span>';
+            $btn = '<button type="button" class="nb-todo-banner-hit" onclick="nbBannerTodoToggle(this,' . $id . ')" title="Toggle done">' . $cbInner . '</button>';
+            $d = min(4, $depth);
+            $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
+            $row = '<div class="' . $cls . '">' . $btn . '<div class="nb-todo-row-main"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . '</div></div>';
+            $sub = '';
+            if (!empty($task['children']) && is_array($task['children'])) {
+                foreach ($task['children'] as $ch) {
+                    $sub .= self::renderAdminTodoNodeHtml($ch, $depth + 1);
+                }
+            }
+            return $row . $sub;
+        }
+
+        private static function bannerTodoToggleScript(): string {
+            return '<script>
+if(typeof nbBannerTodoToggle==="undefined"){
+function nbBannerTodoToggle(btn,todoId){
+if(!todoId||btn.dataset.nbLoading)return;
+btn.dataset.nbLoading="1";
+var fd=new FormData();
+fd.append("nb_banner_todo_toggle","1");
+fd.append("todo_id",String(todoId));
+fetch(window.location.href,{method:"POST",body:fd,credentials:"same-origin",headers:{"X-Requested-With":"XMLHttpRequest","Accept":"application/json"}})
+.then(function(r){return r.json();})
+.then(function(d){
+if(d&&d.ok){window.location.reload();}
+else{alert((d&&d.message)||"Could not update task");btn.dataset.nbLoading="";}
+})
+.catch(function(){alert("Network error");btn.dataset.nbLoading="";});
+}
+}
+</script>';
         }
 
         // ── Priority badge ───────────────────────────────────────────────────
@@ -424,6 +493,22 @@ if (!class_exists('NoticeBannerHelper')) {
         }
 
         // ── Handle acknowledge POST on any page (called from hook, exits with JSON) ──
+        /** Toggle To-Do from live admin banner (any admin page, AJAX). */
+        public static function handleBannerTodoPost(): void {
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_POST['nb_banner_todo_toggle'])) {
+                return;
+            }
+            header('Content-Type: application/json; charset=utf-8');
+            if (!function_exists('noticebanner_admin_toggle_todo_by_id')) {
+                echo json_encode(['ok' => false, 'message' => 'Module not loaded']);
+                exit;
+            }
+            $tid = (int)($_POST['todo_id'] ?? 0);
+            $out = noticebanner_admin_toggle_todo_by_id($tid);
+            echo json_encode($out);
+            exit;
+        }
+
         public static function handleAcknowledgePost(string $area): void {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
             if (empty($_POST['nb_acknowledge'])) return;
@@ -524,6 +609,7 @@ if (!class_exists('NoticeBannerHelper')) {
 
             $html = '';
             $stylePrefix = '';
+            $needsBannerTodoJs = false;
             foreach ($notices as $n) {
                 // ── Audience gate ──
                 $show = ($area === 'admin' && !empty($n['show_to_admins']))
@@ -596,7 +682,12 @@ if (!class_exists('NoticeBannerHelper')) {
                     if ($stylePrefix === '') {
                         $stylePrefix = self::todoBannerStyles();
                     }
-                    $content = self::parseTodoBannerBody($n['notice_content'] ?? '');
+                    if ($area === 'admin' && $currentAdminId > 0) {
+                        $content = self::renderAdminTodoBannerInteractive((int)$n['id']);
+                        $needsBannerTodoJs = true;
+                    } else {
+                        $content = self::parseTodoBannerBody($n['notice_content'] ?? '');
+                    }
                 } else {
                     $content = self::parseMarkdown($n['notice_content'] ?? '');
                 }
@@ -938,7 +1029,9 @@ function nbPollReset(btn,noticeId){
 </script>';
             }
 
-            return $stylePrefix . $html;
+            $bannerTodoScript = $needsBannerTodoJs ? self::bannerTodoToggleScript() : '';
+
+            return $stylePrefix . $html . $bannerTodoScript;
         }
     }
 }

@@ -1056,6 +1056,59 @@ function noticebanner_get_todos_flat(array $filters = []): array {
 }
 }
 
+if (!function_exists('noticebanner_admin_toggle_todo_by_id')) {
+/**
+ * Toggle a task/subtask from the live admin banner (AJAX) or reuse from addon POST handler.
+ *
+ * @return array{ok:bool, message:string, notice_id?:int}
+ */
+function noticebanner_admin_toggle_todo_by_id(int $todoId): array {
+    $adminId = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : 0;
+    if ($adminId <= 0) {
+        return ['ok' => false, 'message' => 'Admin login required'];
+    }
+    if ($todoId <= 0) {
+        return ['ok' => false, 'message' => 'Invalid task'];
+    }
+    try {
+        $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+        if (!$row) {
+            return ['ok' => false, 'message' => 'Task not found'];
+        }
+        $notice = \WHMCS\Database\Capsule::table('mod_noticebanner')
+            ->where('id', (int)$row->notice_id)
+            ->where('is_todo_banner', 1)
+            ->first();
+        if (!$notice) {
+            return ['ok' => false, 'message' => 'Not a To-Do banner'];
+        }
+        $assigned = json_decode($notice->assigned_admins ?? '[]', true) ?: [];
+        if (!empty($assigned) && !in_array($adminId, array_map('intval', $assigned), true)) {
+            return ['ok' => false, 'message' => 'Access denied'];
+        }
+
+        $newCompleted = $row->is_completed ? 0 : 1;
+        $completedAt = $newCompleted ? date('Y-m-d H:i:s') : null;
+        \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->update([
+            'is_completed' => $newCompleted,
+            'completed_at' => $completedAt,
+            'completed_by_admin_id' => $newCompleted ? $adminId : null,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+        noticebanner_todo_add_history($todoId, $newCompleted ? 'checked' : 'unchecked', ['is_completed' => (int)$row->is_completed], ['is_completed' => $newCompleted]);
+        noticebanner_log((int)$row->notice_id, $newCompleted ? 'todo_checked' : 'todo_unchecked', $row->title);
+        if (!empty($row->parent_todo_id)) {
+            noticebanner_sync_parent_todo_completion((int)$row->parent_todo_id, $adminId);
+        }
+        $nid = (int)$row->notice_id;
+        noticebanner_sync_todo_banner_content($nid);
+        return ['ok' => true, 'message' => 'OK', 'notice_id' => $nid];
+    } catch (\Throwable $e) {
+        return ['ok' => false, 'message' => $e->getMessage()];
+    }
+}
+}
+
 if (!function_exists('noticebanner_sync_todo_banner_content')) {
 /**
  * Rebuild mod_noticebanner.notice_content from tasks so admin/client banners show the live checklist.
@@ -1347,24 +1400,35 @@ function noticebanner_output($vars) {
                     $resp = ['ok' => true, 'message' => 'Task added'];
                 } elseif ($action === 'toggle') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $tr = noticebanner_admin_toggle_todo_by_id($todoId);
+                    $resp = ['ok' => $tr['ok'], 'message' => $tr['message']];
+                    if (!empty($tr['ok']) && !empty($tr['notice_id'])) {
+                        $rbNoticeId = (int)$tr['notice_id'];
+                    }
+                } elseif ($action === 'save_todo_row') {
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $title = trim((string)($_POST['todo_title'] ?? ''));
+                    $dueAtRaw = trim((string)($_POST['todo_due_at'] ?? ''));
+                    $remarks = trim((string)($_POST['todo_remarks'] ?? ''));
+                    if ($todoId <= 0 || $title === '') {
+                        throw new \RuntimeException('Task title is required');
+                    }
                     $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
-                    if (!$row) throw new \RuntimeException('Task not found');
-                    $newCompleted = $row->is_completed ? 0 : 1;
-                    $completedAt = $newCompleted ? date('Y-m-d H:i:s') : null;
+                    if (!$row) {
+                        throw new \RuntimeException('Task not found');
+                    }
+                    $newDue = $dueAtRaw !== '' ? date('Y-m-d H:i:s', strtotime($dueAtRaw)) : null;
                     \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->update([
-                        'is_completed' => $newCompleted,
-                        'completed_at' => $completedAt,
-                        'completed_by_admin_id' => $newCompleted ? $adminId : null,
+                        'title' => $title,
+                        'due_at' => $newDue,
+                        'remarks' => $remarks !== '' ? $remarks : null,
                         'updated_at' => date('Y-m-d H:i:s'),
                     ]);
-                    noticebanner_todo_add_history($todoId, $newCompleted ? 'checked' : 'unchecked', ['is_completed' => (int)$row->is_completed], ['is_completed' => $newCompleted]);
-                    noticebanner_log((int)$row->notice_id, $newCompleted ? 'todo_checked' : 'todo_unchecked', $row->title);
-                    if (!empty($row->parent_todo_id)) {
-                        noticebanner_sync_parent_todo_completion((int)$row->parent_todo_id, $adminId);
-                    }
+                    noticebanner_todo_add_history($todoId, 'row_saved', ['title' => (string)$row->title], ['title' => $title]);
+                    noticebanner_log((int)$row->notice_id, 'todo_row_saved', $title);
                     noticebanner_sync_todo_banner_content((int)$row->notice_id);
                     $rbNoticeId = (int)$row->notice_id;
-                    $resp = ['ok' => true, 'message' => 'Task updated'];
+                    $resp = ['ok' => true, 'message' => 'Saved'];
                 } elseif ($action === 'update_due') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
                     $dueAtRaw = trim((string)($_POST['todo_due_at'] ?? ''));
