@@ -1042,6 +1042,61 @@ function noticebanner_get_todos_flat(array $filters = []): array {
 }
 }
 
+if (!function_exists('noticebanner_sync_todo_banner_content')) {
+function noticebanner_sync_todo_banner_content(int $noticeId): void {
+    if ($noticeId <= 0) return;
+    try {
+        $banner = \WHMCS\Database\Capsule::table('mod_noticebanner')
+            ->where('id', $noticeId)
+            ->where('is_todo_banner', 1)
+            ->first(['id', 'notice_title']);
+        if (!$banner) return;
+
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')
+            ->where('notice_id', $noticeId)
+            ->orderBy('parent_todo_id', 'asc')
+            ->orderBy('sort_order', 'asc')
+            ->orderBy('id', 'asc')
+            ->get(['id', 'parent_todo_id', 'title', 'is_completed', 'due_at'])
+            ->toArray();
+
+        $parents = [];
+        $children = [];
+        foreach ($rows as $r) {
+            $line = ($r->is_completed ? '- [x] ' : '- [ ] ') . trim((string)$r->title);
+            if (!empty($r->due_at)) {
+                $line .= ' (Due: ' . date('M j, Y g:ia', strtotime($r->due_at)) . ')';
+            }
+            if (!empty($r->parent_todo_id)) {
+                $pid = (int)$r->parent_todo_id;
+                if (!isset($children[$pid])) $children[$pid] = [];
+                $children[$pid][] = '  ' . $line;
+            } else {
+                $parents[(int)$r->id] = $line;
+            }
+        }
+
+        $contentLines = ["### " . ($banner->notice_title ?: 'To-Do'), ''];
+        foreach ($parents as $pid => $pline) {
+            $contentLines[] = $pline;
+            if (!empty($children[$pid])) {
+                foreach ($children[$pid] as $cline) $contentLines[] = $cline;
+            }
+        }
+        if (count($contentLines) <= 2) {
+            $contentLines[] = '_No tasks yet._';
+        }
+
+        \WHMCS\Database\Capsule::table('mod_noticebanner')
+            ->where('id', $noticeId)
+            ->update([
+                'notice_content' => implode("\n", $contentLines),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+    } catch (\Exception $e) {}
+}
+}
+
 // ─── Admin Output ────────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_output')) {
@@ -1242,6 +1297,7 @@ function noticebanner_output($vars) {
                     if ($parentTodoId > 0) {
                         noticebanner_sync_parent_todo_completion($parentTodoId, $adminId);
                     }
+                    noticebanner_sync_todo_banner_content($noticeId);
                     $resp = ['ok' => true, 'message' => 'Task added'];
                 } elseif ($action === 'toggle') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1260,6 +1316,7 @@ function noticebanner_output($vars) {
                     if (!empty($row->parent_todo_id)) {
                         noticebanner_sync_parent_todo_completion((int)$row->parent_todo_id, $adminId);
                     }
+                    noticebanner_sync_todo_banner_content((int)$row->notice_id);
                     $resp = ['ok' => true, 'message' => 'Task updated'];
                 } elseif ($action === 'update_due') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1273,6 +1330,7 @@ function noticebanner_output($vars) {
                     ]);
                     noticebanner_todo_add_history($todoId, 'duedate_changed', ['due_at' => $row->due_at], ['due_at' => $newDue]);
                     noticebanner_log((int)$row->notice_id, 'todo_due_updated', $row->title);
+                    noticebanner_sync_todo_banner_content((int)$row->notice_id);
                     $resp = ['ok' => true, 'message' => 'Due date updated'];
                 } elseif ($action === 'update_remarks') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1285,6 +1343,7 @@ function noticebanner_output($vars) {
                     ]);
                     noticebanner_todo_add_history($todoId, 'remarked', ['remarks' => (string)$row->remarks], ['remarks' => $remarks]);
                     noticebanner_log((int)$row->notice_id, 'todo_remarks_updated', $row->title);
+                    noticebanner_sync_todo_banner_content((int)$row->notice_id);
                     $resp = ['ok' => true, 'message' => 'Remarks updated'];
                 } elseif ($action === 'delete') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1297,6 +1356,7 @@ function noticebanner_output($vars) {
                     if ($parentTodoId > 0) {
                         noticebanner_sync_parent_todo_completion($parentTodoId, $adminId);
                     }
+                    noticebanner_sync_todo_banner_content((int)$row->notice_id);
                     $resp = ['ok' => true, 'message' => 'Task deleted'];
                 } elseif ($action === 'reorder') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1322,6 +1382,7 @@ function noticebanner_output($vars) {
                             noticebanner_todo_add_history($todoId, 'reordered', ['sort_order' => $currentSort], ['sort_order' => $targetSort]);
                         }
                     }
+                    noticebanner_sync_todo_banner_content((int)$row->notice_id);
                     $resp = ['ok' => true, 'message' => 'Task reordered'];
                 }
             } catch (\Throwable $e) {
