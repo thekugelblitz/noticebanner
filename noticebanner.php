@@ -1890,10 +1890,7 @@ function noticebanner_output($vars) {
         }
         $todoBannerNoticeIds = array_map('intval', $q->pluck('notice_id')->toArray());
     } catch (\Exception $e) {}
-    if ($todoBannerRange !== 'all') {
-        $idSet = array_flip($todoBannerNoticeIds);
-        $todoBanners = array_values(array_filter($todoBanners, fn($n) => isset($idSet[(int)$n['id']])));
-    }
+    // Keep all To-Do banners visible for CRUD, even if they have no tasks yet.
 
     include __DIR__ . '/templates/admin.tpl';
 }
