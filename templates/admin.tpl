@@ -281,7 +281,8 @@ details.nb-todo-task-fold:not([open]) > summary::before { content: '▸ '; }
 }
 .nb-todo-flat-meta { font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
 .nb-todo-assign-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; max-width: 100%; }
-.nb-todo-assign-chips .nb-chip { font-size: 10px; padding: 2px 8px; background: #f5f3ff; color: #5b21b6; border: 1px solid rgba(91, 33, 182, 0.2); }
+.nb-todo-assign-chips .nb-todo-assignee-chip { display: inline-flex; align-items: center; gap: 3px; font-size: 10px; font-weight: 600; padding: 2px 9px 2px 7px; border-radius: 999px; background: linear-gradient(180deg, #ecfeff 0%, #cffafe 100%); color: #0f766e; border: 1px solid #5eead4; box-shadow: 0 1px 0 rgba(13, 148, 136, 0.1); }
+.nb-todo-assign-chips .nb-todo-assignee-chip .nb-todo-assignee-glyph { font-weight: 800; font-size: 11px; color: #0d9488; line-height: 1; }
 .nb-todo-body-assign-row { font-size: 11px; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
 .nb-todo-body-assign-row .nb-assign-lbl { font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
 .nb-todo-flat-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
@@ -2058,7 +2059,7 @@ try {
                                     <?php foreach ($t_sel_ass as $taid): if ($taid <= 0) {
                                         continue;
                                     } ?>
-                                    <span class="nb-chip"><?php echo htmlspecialchars($adminMap[$taid] ?? ('Admin #' . $taid)); ?></span>
+                                    <span class="nb-todo-assignee-chip"><span class="nb-todo-assignee-glyph" aria-hidden="true">@</span><span><?php echo htmlspecialchars($adminMap[$taid] ?? ('Admin #' . $taid)); ?></span></span>
                                     <?php endforeach; ?>
                                 </span>
                                 <span class="nb-todo-task-fold-hint"><?php echo count($subs); ?> sub · <?php echo (int)$subsOpen; ?> open</span>
@@ -2086,7 +2087,7 @@ try {
                                             <?php foreach ($t_sel_ass as $taid): if ($taid <= 0) {
                                                 continue;
                                             } ?>
-                                            <span class="nb-chip"><?php echo htmlspecialchars($adminMap[$taid] ?? ('Admin #' . $taid)); ?></span>
+                                            <span class="nb-todo-assignee-chip"><span class="nb-todo-assignee-glyph" aria-hidden="true">@</span><span><?php echo htmlspecialchars($adminMap[$taid] ?? ('Admin #' . $taid)); ?></span></span>
                                             <?php endforeach; ?>
                                         </span>
                                         <?php endif; ?>
@@ -2202,7 +2203,7 @@ try {
                                             <?php foreach ($su_sel as $said): if ($said <= 0) {
                                                 continue;
                                             } ?>
-                                            <span class="nb-chip"><?php echo htmlspecialchars($adminMap[$said] ?? ('Admin #' . $said)); ?></span>
+                                            <span class="nb-todo-assignee-chip"><span class="nb-todo-assignee-glyph" aria-hidden="true">@</span><span><?php echo htmlspecialchars($adminMap[$said] ?? ('Admin #' . $said)); ?></span></span>
                                             <?php endforeach; ?>
                                         </span>
                                         <?php endif; ?>
@@ -2368,6 +2369,19 @@ var isSub = row && row.classList.contains('nb-todo-flat-sub');
 if(Array.isArray(d.assigned_admins)){
 var ids = d.assigned_admins;
 var labels = Array.isArray(d.assigned_admin_labels) ? d.assigned_admin_labels : [];
+function nbTodoAssigneeChipEl(text){
+var chip = document.createElement('span');
+chip.className = 'nb-todo-assignee-chip';
+var g = document.createElement('span');
+g.className = 'nb-todo-assignee-glyph';
+g.setAttribute('aria-hidden','true');
+g.textContent = '@';
+var tx = document.createElement('span');
+tx.textContent = text != null ? String(text) : '';
+chip.appendChild(g);
+chip.appendChild(tx);
+return chip;
+}
 function nbFillAssignChips(host){
 if(!host) return;
 host.innerHTML = '';
@@ -2381,10 +2395,8 @@ var wrap = document.createElement('span');
 wrap.className = 'nb-todo-assign-chips';
 for(var i=0;i<ids.length;i++){
 var sid = ids[i];
-var chip = document.createElement('span');
-chip.className = 'nb-chip';
-chip.textContent = labels[i] != null ? String(labels[i]) : ('Admin #' + sid);
-wrap.appendChild(chip);
+var lab = labels[i] != null ? String(labels[i]) : ('Admin #' + sid);
+wrap.appendChild(nbTodoAssigneeChipEl(lab));
 }
 host.appendChild(wrap);
 }
@@ -2399,10 +2411,8 @@ else {
 sumHost.style.display = '';
 sumHost.setAttribute('aria-label','Assigned admins');
 for(var j=0;j<ids.length;j++){
-var c = document.createElement('span');
-c.className = 'nb-chip';
-c.textContent = labels[j] != null ? String(labels[j]) : ('Admin #' + ids[j]);
-sumHost.appendChild(c);
+var lab = labels[j] != null ? String(labels[j]) : ('Admin #' + ids[j]);
+sumHost.appendChild(nbTodoAssigneeChipEl(lab));
 }
 }
 }
