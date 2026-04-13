@@ -270,6 +270,10 @@ details.nb-todo-task-fold:not([open]) > summary::before { content: '▸ '; }
   .nb-todo-flat-savegrid .nb-todo-flat-line2 { grid-template-columns: 1fr; }
 }
 .nb-todo-flat-meta { font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 4px; }
+.nb-todo-assign-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; max-width: 100%; }
+.nb-todo-assign-chips .nb-chip { font-size: 10px; padding: 2px 8px; background: #f5f3ff; color: #5b21b6; border: 1px solid rgba(91, 33, 182, 0.2); }
+.nb-todo-body-assign-row { font-size: 11px; margin: 0 0 8px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.nb-todo-body-assign-row .nb-assign-lbl { font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; font-size: 10px; }
 .nb-todo-flat-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid #f1f5f9; }
 .nb-todo-flat-addsub { display: grid; grid-template-columns: 1fr minmax(0,180px) auto; gap: 8px; align-items: end; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #e2e8f0; }
 @media (max-width: 720px) {
@@ -2040,6 +2044,13 @@ try {
                                 <?php if ($tu_display !== 'normal'): ?>
                                     <span class="nb-priority" style="color:<?php echo $priorityConfig[$tu_display]['color'] ?? '#2563eb'; ?>;background:<?php echo $priorityConfig[$tu_display]['bg'] ?? '#eff6ff'; ?>;"><?php echo htmlspecialchars($priorityConfig[$tu_display]['label'] ?? $tu_display); ?></span>
                                 <?php endif; ?>
+                                <span class="nb-todo-assign-chips nb-todo-sum-assign-chips" aria-label="<?php echo !empty($t_sel_ass) ? 'Assigned admins' : ''; ?>"<?php echo empty($t_sel_ass) ? ' style="display:none;"' : ''; ?>>
+                                    <?php foreach ($t_sel_ass as $taid): if ($taid <= 0) {
+                                        continue;
+                                    } ?>
+                                    <span class="nb-chip"><?php echo htmlspecialchars($adminMap[$taid] ?? ('Admin #' . $taid)); ?></span>
+                                    <?php endforeach; ?>
+                                </span>
                                 <span class="nb-todo-task-fold-hint"><?php echo count($subs); ?> sub · <?php echo (int)$subsOpen; ?> open</span>
                             </summary>
                             <div class="nb-todo-task-fold-body">
@@ -2057,6 +2068,18 @@ try {
                                 </form>
                                 <div class="nb-todo-flat-main">
                                     <div class="nb-todo-flat-meta">Task</div>
+                                    <div class="nb-todo-body-assign-row nb-todo-body-assign-chips"<?php echo empty($t_sel_ass) ? ' style="display:none;"' : ''; ?>>
+                                        <?php if (!empty($t_sel_ass)): ?>
+                                        <span class="nb-assign-lbl">Assigned</span>
+                                        <span class="nb-todo-assign-chips">
+                                            <?php foreach ($t_sel_ass as $taid): if ($taid <= 0) {
+                                                continue;
+                                            } ?>
+                                            <span class="nb-chip"><?php echo htmlspecialchars($adminMap[$taid] ?? ('Admin #' . $taid)); ?></span>
+                                            <?php endforeach; ?>
+                                        </span>
+                                        <?php endif; ?>
+                                    </div>
                                     <form method="post" class="nb-todo-flat-savegrid nb-todo-ajax-form">
                                         <input type="hidden" name="nb_todo_action" value="save_todo_row">
                                         <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
@@ -2151,6 +2174,18 @@ try {
                                 </form>
                                 <div class="nb-todo-flat-main">
                                     <div class="nb-todo-flat-meta">Subtask</div>
+                                    <div class="nb-todo-body-assign-row nb-todo-body-assign-chips"<?php echo empty($su_sel) ? ' style="display:none;"' : ''; ?>>
+                                        <?php if (!empty($su_sel)): ?>
+                                        <span class="nb-assign-lbl">Assigned</span>
+                                        <span class="nb-todo-assign-chips">
+                                            <?php foreach ($su_sel as $said): if ($said <= 0) {
+                                                continue;
+                                            } ?>
+                                            <span class="nb-chip"><?php echo htmlspecialchars($adminMap[$said] ?? ('Admin #' . $said)); ?></span>
+                                            <?php endforeach; ?>
+                                        </span>
+                                        <?php endif; ?>
+                                    </div>
                                     <form method="post" class="nb-todo-flat-savegrid nb-todo-ajax-form">
                                         <input type="hidden" name="nb_todo_action" value="save_todo_row">
                                         <input type="hidden" name="todo_id" value="<?php echo $sid; ?>">
@@ -2279,6 +2314,53 @@ var btn = form.querySelector('.nb-todo-ring-btn');
 if(btn && typeof d.is_completed === 'boolean'){
 if(d.is_completed){ btn.classList.add('nb-on'); btn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>'; }
 else { btn.classList.remove('nb-on'); btn.innerHTML = ''; }
+}
+return;
+}
+if(act === 'save_todo_row' && d.ok && Array.isArray(d.assigned_admins)){
+var row = form.closest('.nb-todo-flat-row');
+var fold = form.closest('details.nb-todo-task-fold');
+var isSub = row && row.classList.contains('nb-todo-flat-sub');
+var ids = d.assigned_admins;
+var labels = Array.isArray(d.assigned_admin_labels) ? d.assigned_admin_labels : [];
+function nbFillAssignChips(host){
+if(!host) return;
+host.innerHTML = '';
+if(!ids.length){ host.style.display = 'none'; return; }
+host.style.display = '';
+var lbl = document.createElement('span');
+lbl.className = 'nb-assign-lbl';
+lbl.textContent = 'Assigned';
+host.appendChild(lbl);
+var wrap = document.createElement('span');
+wrap.className = 'nb-todo-assign-chips';
+for(var i=0;i<ids.length;i++){
+var sid = ids[i];
+var chip = document.createElement('span');
+chip.className = 'nb-chip';
+chip.textContent = labels[i] != null ? String(labels[i]) : ('Admin #' + sid);
+wrap.appendChild(chip);
+}
+host.appendChild(wrap);
+}
+var bodyHost = row ? row.querySelector('.nb-todo-body-assign-chips') : null;
+nbFillAssignChips(bodyHost);
+if(!isSub && fold){
+var sumHost = fold.querySelector('.nb-todo-sum-assign-chips');
+if(sumHost){
+sumHost.innerHTML = '';
+if(!ids.length){ sumHost.setAttribute('aria-label',''); sumHost.style.display = 'none'; }
+else {
+sumHost.style.display = '';
+sumHost.setAttribute('aria-label','Assigned admins');
+for(var j=0;j<ids.length;j++){
+var c = document.createElement('span');
+c.className = 'nb-chip';
+c.textContent = labels[j] != null ? String(labels[j]) : ('Admin #' + ids[j]);
+sumHost.appendChild(c);
+}
+}
+}
 }
 return;
 }

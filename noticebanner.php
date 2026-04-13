@@ -1830,7 +1830,28 @@ function noticebanner_output($vars) {
                     noticebanner_log((int)$row->notice_id, 'todo_row_saved', $title);
                     noticebanner_sync_todo_banner_content((int)$row->notice_id);
                     $rbNoticeId = (int)$row->notice_id;
-                    $resp = ['ok' => true, 'message' => 'Saved'];
+                    $assignLabels = [];
+                    if ($taskAssigned !== []) {
+                        $arows = \WHMCS\Database\Capsule::table('tbladmins')
+                            ->whereIn('id', $taskAssigned)
+                            ->get(['id', 'firstname', 'lastname'])
+                            ->toArray();
+                        $byId = [];
+                        foreach ($arows as $ar) {
+                            $byId[(int)$ar->id] = trim((string)($ar->firstname ?? '') . ' ' . (string)($ar->lastname ?? ''));
+                        }
+                        foreach ($taskAssigned as $aid) {
+                            $nm = $byId[$aid] ?? '';
+                            $assignLabels[] = ($nm !== '') ? $nm : ('Admin #' . $aid);
+                        }
+                    }
+                    $resp = [
+                        'ok' => true,
+                        'message' => 'Saved',
+                        'todo_id' => $todoId,
+                        'assigned_admins' => $taskAssigned,
+                        'assigned_admin_labels' => $assignLabels,
+                    ];
                 } elseif ($action === 'update_due') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
                     $dueAtRaw = trim((string)($_POST['todo_due_at'] ?? ''));

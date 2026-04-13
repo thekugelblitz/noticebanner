@@ -220,6 +220,8 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-todo-banner-rows-neutral .nb-todo-urg-pill{background:rgba(15,23,42,0.08);color:inherit;}
 .nb-todo-urg-pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.07);color:rgba(15,23,42,0.75);}
 .nb-todo-tag-pill{font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;background:rgba(99,102,241,0.12);color:#4338ca;margin-right:4px;}
+.nb-todo-assignee-pill{font-size:10px;font-weight:600;padding:2px 8px;border-radius:999px;background:rgba(91,33,182,0.12);color:#5b21b6;margin-right:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;}
+.nb-todo-banner-rows-neutral .nb-todo-assignee-pill{background:rgba(15,23,42,0.08);color:inherit;border:1px solid rgba(15,23,42,0.1);}
 details.nb-todo-banner-outer{display:block;width:100%;box-sizing:border-box;}
 details.nb-todo-banner-outer > summary.nb-todo-banner-outer-sum{list-style:none;cursor:pointer;user-select:none;display:flex;align-items:flex-start;gap:8px;width:100%;box-sizing:border-box;}
 details.nb-todo-banner-outer > summary::-webkit-details-marker{display:none;}
@@ -505,6 +507,21 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
                     $tagsHtml .= '<span class="nb-todo-tag-pill">' . htmlspecialchars($tg, ENT_QUOTES, 'UTF-8') . '</span>';
                 }
             }
+            $assHtml = '';
+            $assIds = [];
+            if (!empty($task['assigned_admins']) && is_array($task['assigned_admins'])) {
+                $assIds = array_values(array_unique(array_filter(array_map('intval', $task['assigned_admins']))));
+            }
+            if ($assIds !== []) {
+                $nameMap = self::adminNames($assIds);
+                foreach ($assIds as $aid) {
+                    if ($aid <= 0) {
+                        continue;
+                    }
+                    $nm = $nameMap[$aid] ?? ('Admin #' . $aid);
+                    $assHtml .= '<span class="nb-todo-assignee-pill">' . htmlspecialchars($nm, ENT_QUOTES, 'UTF-8') . '</span>';
+                }
+            }
             $remarks = trim((string)($task['remarks'] ?? ''));
             $noteHtml = $remarks !== ''
                 ? '<div class="nb-todo-note">' . htmlspecialchars($remarks, ENT_QUOTES, 'UTF-8') . '</div>'
@@ -515,7 +532,7 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             $btn = '<button type="button" class="nb-todo-banner-hit" onclick="nbBannerTodoToggle(this,' . $id . ')" title="Toggle done">' . $cbInner . '</button>';
             $d = min(4, $depth);
             $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
-            $metaLine = ($urgHtml !== '' || $tagsHtml !== '') ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $urgHtml . $tagsHtml . '</div>' : '';
+            $metaLine = ($urgHtml !== '' || $tagsHtml !== '' || $assHtml !== '') ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $urgHtml . $tagsHtml . $assHtml . '</div>' : '';
             $rowAttr = '';
             if (!$neutralRows) {
                 $rowAttr = ' style="--nb-todo-accent:' . $accentEsc . ';"';
