@@ -257,6 +257,12 @@ details.nb-todo-banner-outer[open] > summary.nb-todo-banner-outer-sum::before{co
 /* Beat aggressive client-theme resets so headline/body stay visible */
 .nb-promo-gradient .nb-promo-headline,.nb-promo-flash .nb-promo-headline,.nb-promo-neon .nb-promo-headline{color:#fff!important;}
 .nb-promo-neon .nb-promo-sub{color:#e2e8f0!important;}
+.nb-promo-tags{margin-top:14px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;}
+.nb-promo-tag-chip{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;}
+.nb-promo-gradient .nb-promo-tag-chip,.nb-promo-flash .nb-promo-tag-chip{background:rgba(255,255,255,0.22)!important;color:#fff!important;border:1px solid rgba(255,255,255,0.35);}
+.nb-promo-neon .nb-promo-tag-chip{background:rgba(34,211,238,0.14)!important;color:#ecfeff!important;border:1px solid rgba(34,211,238,0.35);}
+.nb-promo-ribbon .nb-promo-tag-chip{background:rgba(245,158,11,0.25)!important;color:#78350f!important;}
+.nb-promo-minimal .nb-promo-tag-chip{background:rgba(99,102,241,0.12)!important;color:#4338ca!important;}
 </style>';
         }
 
@@ -270,13 +276,16 @@ details.nb-todo-banner-outer[open] > summary.nb-todo-banner-outer-sum::before{co
 .nb-banner-promo--clientStrip .nb-promo-surface{border-radius:0!important;max-width:none!important;width:100%!important;margin:0!important;box-sizing:border-box;box-shadow:none!important;}
 .nb-banner-promo--clientStrip .nb-promo-gradient,.nb-banner-promo--clientStrip .nb-promo-flash,.nb-banner-promo--clientStrip .nb-promo-neon,.nb-banner-promo--clientStrip .nb-promo-ribbon,.nb-banner-promo--clientStrip .nb-promo-minimal{box-shadow:none!important;}
 .nb-banner-promo--clientStrip .nb-promo-surface{padding-top:52px!important;padding-left:clamp(16px,4vw,28px)!important;padding-right:clamp(16px,4vw,28px)!important;padding-bottom:22px!important;}
+.nb-promo--collapsible .nb-promo-expanded-panel .nb-promo-surface{padding-top:22px!important;}
+.nb-promo-collapse-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;padding:12px clamp(16px,4vw,24px);min-height:48px;color:#fff;font-size:15px;font-weight:800;}
+.nb-promo-collapse-head .nb-promo-collapse-title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 </style>';
         }
 
         /**
          * Rich promotion banner body: headline, markdown, optional coupon + CTA.
          */
-        public static function renderPromotionBannerBody(array $n, string $area, bool $isPro): string {
+        public static function renderPromotionBannerBody(array $n, string $area, bool $isPro, bool $omitHeadlineForCollapsible = false): string {
             $tpl = preg_replace('/[^a-z]/', '', strtolower((string)($n['promo_template'] ?? 'gradient')));
             if ($tpl === '') {
                 $tpl = 'gradient';
@@ -329,11 +338,26 @@ details.nb-todo-banner-outer[open] > summary.nb-todo-banner-outer-sum::before{co
                 $ribbon = '<span class="nb-promo-ribbon-corner" aria-hidden="true"></span><span class="nb-promo-ribbon-label">Sale</span>';
             }
 
+            $tagsBlock = '';
+            if ($isPro && !empty($n['tags'])) {
+                $tagsBlock = '<div class="nb-promo-tags">';
+                foreach (array_map('trim', explode(',', (string)$n['tags'])) as $tag) {
+                    if ($tag === '') {
+                        continue;
+                    }
+                    $tagsBlock .= '<span class="nb-promo-tag-chip">#'
+                        . htmlspecialchars($tag, ENT_QUOTES, 'UTF-8') . '</span>';
+                }
+                $tagsBlock .= '</div>';
+            }
+
             $cls = 'nb-promo-surface nb-promo-' . $tpl;
+            $headEl = $omitHeadlineForCollapsible ? '' : '<div class="nb-promo-headline">' . $headline . '</div>';
             $inner = '<div class="' . $cls . '"' . $surfaceStyle . '>' . $ribbon
-                . '<div class="nb-promo-headline">' . $headline . '</div>'
+                . $headEl
                 . ($sub !== '' ? '<div class="nb-promo-sub">' . $sub . '</div>' : '')
                 . '<div class="nb-promo-actions">' . $codeRow . $cta . '</div>'
+                . $tagsBlock
                 . '</div>';
 
             return $inner;
@@ -920,7 +944,8 @@ alert((d&&d.message)||"Could not update task");
                     if (strpos($stylePrefix, 'nb-promo-banner-css') === false) {
                         $stylePrefix .= self::promotionBannerStyles();
                     }
-                    $content = self::renderPromotionBannerBody($n, $area, $isPro);
+                    $promoOmitHead = $area === 'client' && !empty($n['promo_collapsible']);
+                    $content = self::renderPromotionBannerBody($n, $area, $isPro, $promoOmitHead);
                     if (trim((string)($n['promo_coupon_code'] ?? '')) !== '') {
                         $needsPromoCopyJs = true;
                     }
@@ -1110,9 +1135,10 @@ alert((d&&d.message)||"Could not update task");
                 if ($isPromo) {
                     $promoSlotClass = 'nb-promo-client-slot' . ($area === 'client' ? ' nb-promo-client-slot--strip' : '');
                     $promoSlotMt     = ($area === 'client') ? '0' : '8px';
+                    // Tags render inside .nb-promo-surface (renderPromotionBannerBody) — do not append $tagsHtml here
                     $bodyHtml = '<div class="' . $promoSlotClass . '" style="margin-top:' . $promoSlotMt . ';font-size:14px;line-height:1.7;text-align:left;">'
                         . $content . $btnHtml . $ticketHtml . $pollHtml
-                        . $tagsHtml . $assignedHtml
+                        . $assignedHtml
                         . '</div>';
                 } else {
                     $bodyMt = $todoOuterCollapse ? '0' : $bodyTop;
@@ -1174,20 +1200,52 @@ alert((d&&d.message)||"Could not update task");
                         . '</div>';
                 } elseif ($isPromo) {
                     $controls .= $dismissBtn . '</div>';
+                    $promoCollapsible   = ($area === 'client' && !empty($n['promo_collapsible']));
+                    $promoStartExpanded = !empty($n['promo_start_expanded']);
+                    $bgPromo              = $n['bg_color'] ?: '#6366f1';
+                    $g2Promo              = '#7c3aed';
+                    if (preg_match('/^#[0-9A-Fa-f]{6}$/', (string)$bgPromo)) {
+                        $g2Promo = $bgPromo;
+                    }
+                    $collapseHeadStyle = 'background:linear-gradient(135deg,' . htmlspecialchars($bgPromo, ENT_QUOTES, 'UTF-8') . ',' . htmlspecialchars($g2Promo, ENT_QUOTES, 'UTF-8') . ');';
+
                     if ($area === 'client') {
-                        // Single full-width strip: no separate "Promotion" header row (avoids double-band look)
-                        $promoTopBar = '<div style="position:absolute;top:10px;right:12px;z-index:30;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
-                            . $ackBtn . $dismissBtn . '</div>';
-                        $promoMeta = ($pinnedHtml !== '' || $tsHtml !== '')
-                            ? '<div style="position:absolute;top:10px;left:14px;z-index:29;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:52%;">'
-                            . $pinnedHtml . $tsHtml . '</div>'
-                            : '';
-                        $html .= '<div id="' . $id . '" class="nb-banner-promo-root nb-banner-promo--clientStrip" style="' . $bannerStyle . '">'
-                            . '<div style="position:relative;width:100%;min-height:48px;">'
-                            . $promoTopBar
-                            . $promoMeta
-                            . $bodyHtml
-                            . '</div></div>';
+                        if ($promoCollapsible) {
+                            $bodyId   = $id . '_body';
+                            $bodyDisp = $promoStartExpanded ? 'block' : 'none';
+                            $expLabel = $promoStartExpanded ? 'Collapse' : 'Expand';
+                            $expandBtn = '<button type="button" class="nb-promo-expand-toggle" onclick="(function(b,c){var o=c.style.display!==\'none\';c.style.display=o?\'none\':\'block\';b.textContent=o?\'Expand\':\'Collapse\';})(this,document.getElementById(\'' . $bodyId . '\'))" '
+                                . 'style="padding:5px 12px;font-size:12px;border-radius:8px;border:1px solid rgba(255,255,255,0.45);background:rgba(255,255,255,0.15);color:#fff;cursor:pointer;font-weight:700;">'
+                                . htmlspecialchars($expLabel, ENT_QUOTES, 'UTF-8') . '</button>';
+                            $collapseHead = '<div class="nb-promo-collapse-head" style="' . $collapseHeadStyle . '">'
+                                . '<span class="nb-promo-collapse-title">' . htmlspecialchars($n['notice_title'] ?? '', ENT_QUOTES, 'UTF-8') . '</span>'
+                                . '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;">'
+                                . $expandBtn . $ackBtn . $dismissBtn
+                                . '</div></div>';
+                            $metaMini = ($pinnedHtml !== '' || $tsHtml !== '')
+                                ? '<div style="font-size:11px;opacity:0.9;margin-top:4px;padding:0 clamp(16px,4vw,24px);">' . $pinnedHtml . $tsHtml . '</div>'
+                                : '';
+                            $html .= '<div id="' . $id . '" class="nb-banner-promo-root nb-banner-promo--clientStrip nb-promo--collapsible" style="' . $bannerStyle . '">'
+                                . $collapseHead
+                                . $metaMini
+                                . '<div id="' . $bodyId . '" class="nb-promo-expanded-panel" style="display:' . $bodyDisp . ';">'
+                                . $bodyHtml
+                                . '</div></div>';
+                        } else {
+                            // Single full-width strip: no separate "Promotion" header row (avoids double-band look)
+                            $promoTopBar = '<div style="position:absolute;top:10px;right:12px;z-index:30;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
+                                . $ackBtn . $dismissBtn . '</div>';
+                            $promoMeta = ($pinnedHtml !== '' || $tsHtml !== '')
+                                ? '<div style="position:absolute;top:10px;left:14px;z-index:29;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:52%;">'
+                                . $pinnedHtml . $tsHtml . '</div>'
+                                : '';
+                            $html .= '<div id="' . $id . '" class="nb-banner-promo-root nb-banner-promo--clientStrip" style="' . $bannerStyle . '">'
+                                . '<div style="position:relative;width:100%;min-height:48px;">'
+                                . $promoTopBar
+                                . $promoMeta
+                                . $bodyHtml
+                                . '</div></div>';
+                        }
                     } else {
                         $html .= '<div id="' . $id . '" class="nb-banner-promo-root" style="' . $bannerStyle . '">'
                             . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;width:100%;box-sizing:border-box;">'

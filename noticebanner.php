@@ -189,6 +189,10 @@ function noticebanner_ensure_columns() {
                 $table->string('promo_coupon_code', 120)->default('')->after('is_promotion_banner');
             if (!$schema->hasColumn('mod_noticebanner', 'promo_template'))
                 $table->string('promo_template', 32)->default('gradient')->after('promo_coupon_code');
+            if (!$schema->hasColumn('mod_noticebanner', 'promo_collapsible'))
+                $table->tinyInteger('promo_collapsible')->default(0)->after('promo_template');
+            if (!$schema->hasColumn('mod_noticebanner', 'promo_start_expanded'))
+                $table->tinyInteger('promo_start_expanded')->default(0)->after('promo_collapsible');
         });
 
         // mod_noticebanner_reads
@@ -795,6 +799,11 @@ function noticebanner_build_payload(): array {
         $base['promo_coupon_code'] = substr($base['promo_coupon_code'], 0, 120);
     }
     $base['promo_template'] = $promoTpl;
+    $base['promo_collapsible']      = !empty($_POST['promo_collapsible']) ? 1 : 0;
+    $base['promo_start_expanded']   = !empty($_POST['promo_start_expanded']) ? 1 : 0;
+    if (empty($base['promo_collapsible'])) {
+        $base['promo_start_expanded'] = 0;
+    }
 
     // Pro-only fields — silently zeroed/nulled when not licensed
     $pro = $isPro ? [
@@ -855,6 +864,8 @@ function noticebanner_build_payload(): array {
         $out['is_promotion_banner'] = 0;
         $out['promo_coupon_code'] = '';
         $out['promo_template'] = 'gradient';
+        $out['promo_collapsible'] = 0;
+        $out['promo_start_expanded'] = 0;
     } else {
         $out['is_todo_banner'] = 0;
         $out['poll_enabled'] = 0;
