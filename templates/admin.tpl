@@ -200,6 +200,7 @@ $licBadgeLabel = $isPro ? '✓ Pro Active' : (($licStatus === 'no_key' || $licSt
         <span style="font-size:11px;font-weight:600;color:#854d0e;background:#fef9c3;border:1px solid #fde68a;border-radius:999px;padding:1px 7px;margin-left:4px;"><?php echo $activeCount; ?>/<?php echo $freeCap; ?></span>
         <?php endif; ?>
     </span>
+    <span class="nb-tab" onclick="nbMainTab('todo-banners',this)">🧩 To-Do Banners</span>
     <span class="nb-tab" onclick="nbMainTab('todos',this)">✅ To-Do</span>
     <span class="nb-tab" onclick="nbMainTab('license',this)">🔑 License &amp; Settings
         <span class="nb-lic-badge <?php echo $licBadgeClass; ?>" style="padding:1px 8px;font-size:11px;margin-left:4px;"><?php echo htmlspecialchars($licBadgeLabel); ?></span>
@@ -1266,6 +1267,8 @@ $licBadgeLabel = $isPro ? '✓ Pro Active' : (($licStatus === 'no_key' || $licSt
 
             <td style="text-align:right;white-space:nowrap;">
                 <div style="display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap;">
+                    <!-- Quick To-Do -->
+                    <a href="addonmodules.php?module=noticebanner&todo_notice_id=<?php echo (int)$n['id']; ?>#nb-todos" class="nb-btn nb-btn-ghost nb-btn-sm" title="Open To-Do for this notice">✅ To-Do</a>
                     <!-- Edit -->
                     <form method="post" style="display:inline;">
                         <input type="hidden" name="edit_load" value="<?php echo (int)$n['id']; ?>">
@@ -1384,6 +1387,70 @@ try {
 </div><!-- /nb-pane-notices -->
 
 <!-- ══════════════════════════════════════════════════════════════════════════
+     TAB PANE: TO-DO BANNERS
+══════════════════════════════════════════════════════════════════════════ -->
+<div id="nb-pane-todo-banners" class="nb-main-tab-pane">
+<div class="nb-card">
+    <div class="nb-card-header">
+        <h2>🧩 To-Do Banners</h2>
+        <span style="font-size:13px;color:#64748b;"><?php echo count($todoBanners); ?> banner<?php echo count($todoBanners) === 1 ? '' : 's'; ?></span>
+    </div>
+    <div class="nb-card-body">
+        <div class="nb-alert" style="margin-bottom:12px;background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;">
+            Create banner records specifically for task management. These stay separated from regular notice workflow.
+        </div>
+        <form method="post" style="display:grid;grid-template-columns:1.2fr 2fr auto;gap:10px;align-items:end;margin-bottom:14px;">
+            <div class="nb-field" style="margin:0;">
+                <label>Banner title</label>
+                <input type="text" name="todo_banner_title" required placeholder="e.g. Migration Sprint Tasks">
+            </div>
+            <div class="nb-field" style="margin:0;">
+                <label>Banner description</label>
+                <input type="text" name="todo_banner_content" placeholder="Optional context shown in banner">
+            </div>
+            <button type="submit" name="create_todo_banner" value="1" class="nb-btn nb-btn-primary">Create To-Do Banner</button>
+        </form>
+
+        <?php if (empty($todoBanners)): ?>
+            <div style="font-size:14px;color:#94a3b8;">No To-Do banners yet.</div>
+        <?php else: ?>
+        <div style="overflow-x:auto;">
+            <table class="nb-log-table">
+                <thead>
+                    <tr>
+                        <th>Banner</th>
+                        <th>Visibility</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($todoBanners as $tb): ?>
+                    <tr>
+                        <td>
+                            <strong><?php echo htmlspecialchars($tb['notice_title']); ?></strong><br>
+                            <span style="font-size:12px;color:#64748b;"><?php echo htmlspecialchars(mb_strimwidth(strip_tags($tb['notice_content'] ?? ''), 0, 110, '…')); ?></span>
+                        </td>
+                        <td style="font-size:12px;"><?php echo !empty($tb['show_to_admins']) ? 'Admins' : 'Hidden'; ?></td>
+                        <td style="font-size:12px;color:#64748b;"><?php echo !empty($tb['created_at']) ? date('M j, Y g:ia', strtotime($tb['created_at'])) : '—'; ?></td>
+                        <td style="white-space:nowrap;">
+                            <a href="addonmodules.php?module=noticebanner&todo_notice_id=<?php echo (int)$tb['id']; ?>#nb-todos" class="nb-btn nb-btn-ghost nb-btn-sm">Open Tasks</a>
+                            <form method="post" style="display:inline;">
+                                <input type="hidden" name="edit_load" value="<?php echo (int)$tb['id']; ?>">
+                                <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Edit Banner</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+</div><!-- /nb-pane-todo-banners -->
+
+<!-- ══════════════════════════════════════════════════════════════════════════
      TAB PANE: TO-DO
 ══════════════════════════════════════════════════════════════════════════ -->
 <div id="nb-pane-todos" class="nb-main-tab-pane">
@@ -1393,6 +1460,37 @@ try {
         <span style="font-size:13px;color:#64748b;"><?php echo count($todoRows); ?> task<?php echo count($todoRows) === 1 ? '' : 's'; ?></span>
     </div>
     <div class="nb-card-body">
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;margin-bottom:12px;">
+            <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:8px;">Quick Add Task</div>
+            <form method="post" class="nb-todo-ajax" style="display:grid;grid-template-columns:1.2fr 2fr 1fr 1fr auto;gap:8px;align-items:end;">
+                <input type="hidden" name="nb_todo_action" value="add">
+                <div class="nb-field" style="margin:0;">
+                    <label>Notice</label>
+                    <select name="todo_notice_id" required>
+                        <option value="">Select notice...</option>
+                        <?php foreach ($notices as $n): ?>
+                            <option value="<?php echo (int)$n['id']; ?>" <?php echo ((int)$todoFilters['notice_id'] === (int)$n['id']) ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($n['notice_title']); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <div class="nb-field" style="margin:0;">
+                    <label>Task title</label>
+                    <input type="text" name="todo_title" required placeholder="Write task title">
+                </div>
+                <div class="nb-field" style="margin:0;">
+                    <label>Due date</label>
+                    <input type="datetime-local" name="todo_due_at">
+                </div>
+                <div class="nb-field" style="margin:0;">
+                    <label>Remarks</label>
+                    <input type="text" name="todo_remarks" placeholder="Optional">
+                </div>
+                <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add</button>
+            </form>
+        </div>
+
         <form method="get" style="display:grid;grid-template-columns:1.2fr 1fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;">
             <input type="hidden" name="module" value="noticebanner">
             <div class="nb-field" style="margin:0;">
@@ -1725,7 +1823,7 @@ $licLastError  = $licenseStatus['last_error'] ?? null;
 function nbMainTab(pane, el) {
     document.querySelectorAll('#nb-main-tabs .nb-tab').forEach(t => t.classList.remove('active'));
     el.classList.add('active');
-    ['notices','todos','license','log'].forEach(function(p) {
+    ['notices','todo-banners','todos','license','log'].forEach(function(p) {
         var el2 = document.getElementById('nb-pane-' + p);
         if (el2) el2.classList.toggle('active', p === pane);
     });
@@ -1735,10 +1833,10 @@ function nbMainTab(pane, el) {
 // Restore tab from hash on load
 (function() {
     var h = window.location.hash;
-    var map = {'#nb-notices':'notices','#nb-todos':'todos','#nb-license':'license','#nb-log':'log'};
+    var map = {'#nb-notices':'notices','#nb-todo-banners':'todo-banners','#nb-todos':'todos','#nb-license':'license','#nb-log':'log'};
     if (map[h]) {
         var tabs = document.querySelectorAll('#nb-main-tabs .nb-tab');
-        var panes = ['notices','todos','license','log'];
+        var panes = ['notices','todo-banners','todos','license','log'];
         panes.forEach(function(p, i) {
             var pEl = document.getElementById('nb-pane-' + p);
             if (pEl) pEl.classList.toggle('active', p === map[h]);

@@ -92,6 +92,7 @@ function noticebanner_ensure_table() {
                 $table->string('webhook_url', 500)->default('');
                 $table->text('page_slugs')->nullable();
                 $table->tinyInteger('is_pinned')->default(0);
+                $table->tinyInteger('is_todo_banner')->default(0);
                 $table->timestamps();
             });
         }
@@ -173,9 +174,11 @@ function noticebanner_ensure_columns() {
                 $table->text('page_slugs')->nullable()->after('webhook_url');
             if (!$schema->hasColumn('mod_noticebanner', 'is_pinned'))
                 $table->tinyInteger('is_pinned')->default(0)->after('page_slugs');
+            if (!$schema->hasColumn('mod_noticebanner', 'is_todo_banner'))
+                $table->tinyInteger('is_todo_banner')->default(0)->after('is_pinned');
             // v3.1 — granular targeting
             if (!$schema->hasColumn('mod_noticebanner', 'target_clients'))
-                $table->text('target_clients')->nullable()->after('is_pinned');
+                $table->text('target_clients')->nullable()->after('is_todo_banner');
             if (!$schema->hasColumn('mod_noticebanner', 'target_servers'))
                 $table->text('target_servers')->nullable()->after('target_clients');
             if (!$schema->hasColumn('mod_noticebanner', 'target_products'))
@@ -1539,6 +1542,69 @@ function noticebanner_output($vars) {
         }
 
         // ── Save notice (add or edit) ──
+        if (isset($_POST['create_todo_banner'])) {
+            $title = trim((string)($_POST['todo_banner_title'] ?? ''));
+            $content = trim((string)($_POST['todo_banner_content'] ?? ''));
+            if ($title === '') {
+                $message = '<div class="nb-alert nb-alert-danger">To-Do banner title is required.</div>';
+            } elseif (noticebanner_free_cap_reached()) {
+                $cap = noticebanner_free_notice_cap();
+                $message = '<div class="nb-alert nb-alert-danger">Free tier limit reached (' . htmlspecialchars((string)$cap) . '). Delete a notice or upgrade to Pro.</div>';
+            } else {
+                try {
+                    \WHMCS\Database\Capsule::table('mod_noticebanner')->increment('sort_order');
+                    $newId = \WHMCS\Database\Capsule::table('mod_noticebanner')->insertGetId([
+                        'notice_title'         => $title,
+                        'notice_content'       => $content,
+                        'show_to_clients'      => 0,
+                        'show_to_admins'       => 1,
+                        'display_type'         => 'banner',
+                        'show_again_minutes'   => 60,
+                        'expandable'           => 0,
+                        'bg_color'             => '#e0f2fe',
+                        'font_color'           => '#0f172a',
+                        'button_enabled'       => 0,
+                        'button_text'          => '',
+                        'button_link'          => '',
+                        'button_newtab'        => 0,
+                        'button_bg'            => '#2563eb',
+                        'button_color'         => '#ffffff',
+                        'ticket_enabled'       => 0,
+                        'ticket_department_id' => '',
+                        'ticket_button_text'   => '',
+                        'poll_enabled'         => 0,
+                        'poll_question'        => '',
+                        'poll_options'         => json_encode([]),
+                        'poll_results'         => json_encode([]),
+                        'assigned_admins'      => json_encode([]),
+                        'mentioned_admins'     => json_encode([]),
+                        'priority'             => 'normal',
+                        'notice_timestamp'     => null,
+                        'sort_order'           => 0,
+                        'expires_at'           => null,
+                        'tags'                 => 'todo',
+                        'client_groups'        => json_encode([]),
+                        'is_template'          => 0,
+                        'template_name'        => '',
+                        'publish_at'           => null,
+                        'webhook_url'          => '',
+                        'page_slugs'           => json_encode([]),
+                        'is_pinned'            => 0,
+                        'is_todo_banner'       => 1,
+                        'target_clients'       => json_encode([]),
+                        'target_servers'       => json_encode([]),
+                        'target_products'      => json_encode([]),
+                        'created_at'           => date('Y-m-d H:i:s'),
+                        'updated_at'           => date('Y-m-d H:i:s'),
+                    ]);
+                    noticebanner_log($newId, 'todo_banner_created', $title);
+                    $message = '<div class="nb-alert nb-alert-success">To-Do banner created. You can now add tasks in the To-Do tab.</div>';
+                } catch (\Exception $e) {
+                    $message = '<div class="nb-alert nb-alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
+                }
+            }
+        }
+        // ── Save notice (add or edit) ──
         if (isset($_POST['save_notice'])) {
             $payload = noticebanner_build_payload();
             $editId  = (int)($_POST['edit_id'] ?? 0);
@@ -1764,6 +1830,7 @@ function noticebanner_output($vars) {
     $todoAdminMap = noticebanner_get_admin_name_map($todoAdminIds);
     $todoNoticeMap = noticebanner_get_notice_title_map($todoNoticeIds);
     $editNoticeTodos = isset($edit_notice['id']) ? noticebanner_get_todos_for_notice((int)$edit_notice['id']) : [];
+    $todoBanners = array_values(array_filter($notices, fn($n) => !empty($n['is_todo_banner'])));
 
     include __DIR__ . '/templates/admin.tpl';
 }
