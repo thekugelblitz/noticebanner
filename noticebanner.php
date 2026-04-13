@@ -1896,6 +1896,7 @@ function noticebanner_output($vars) {
         'completed_to'   => trim((string)($_GET['todo_completed_to'] ?? '')),
     ];
     $todoRows = noticebanner_get_todos_flat($todoFilters);
+    $todoRowsAll = noticebanner_get_todos_flat(['status' => 'all']);
     $todoAdminIds = [];
     $todoNoticeIds = [];
     foreach ($todoRows as $row) {

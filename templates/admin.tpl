@@ -1404,7 +1404,7 @@ try {
         foreach ($todoBanners as $tb) {
             if ((int)$tb['id'] === $selectedBannerId) { $selectedBanner = $tb; break; }
         }
-        $visibleTodoRows = $selectedBannerId > 0 ? array_values(array_filter($todoRows, fn($r) => (int)$r['notice_id'] === $selectedBannerId)) : [];
+        $visibleTodoRows = $selectedBannerId > 0 ? array_values(array_filter($todoRowsAll, fn($r) => (int)$r['notice_id'] === $selectedBannerId)) : [];
         ?>
 
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:10px;">
@@ -1545,40 +1545,6 @@ try {
                 <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add</button>
             </form>
         </div>
-
-        <form method="get" style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto;gap:8px;align-items:end;margin-bottom:14px;">
-            <input type="hidden" name="module" value="noticebanner">
-            <input type="hidden" name="todo_banner_range" value="<?php echo htmlspecialchars($todoBannerRange); ?>">
-            <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBanner['id']; ?>">
-            <div class="nb-field" style="margin:0;">
-                <label>Status</label>
-                <select name="todo_status">
-                    <?php foreach (['all' => 'All', 'open' => 'Open', 'completed' => 'Completed', 'overdue' => 'Overdue', 'due_today' => 'Due Today'] as $k => $label): ?>
-                    <option value="<?php echo $k; ?>" <?php echo ($todoFilters['status'] === $k) ? 'selected' : ''; ?>><?php echo $label; ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <div class="nb-field" style="margin:0;">
-                <label>Due from</label>
-                <input type="date" name="todo_due_from" value="<?php echo htmlspecialchars($todoFilters['due_from']); ?>">
-            </div>
-            <div class="nb-field" style="margin:0;">
-                <label>Due to</label>
-                <input type="date" name="todo_due_to" value="<?php echo htmlspecialchars($todoFilters['due_to']); ?>">
-            </div>
-            <div class="nb-field" style="margin:0;">
-                <label>Completed from</label>
-                <input type="date" name="todo_completed_from" value="<?php echo htmlspecialchars($todoFilters['completed_from']); ?>">
-            </div>
-            <div class="nb-field" style="margin:0;">
-                <label>Completed to</label>
-                <input type="date" name="todo_completed_to" value="<?php echo htmlspecialchars($todoFilters['completed_to']); ?>">
-            </div>
-            <div style="display:flex;gap:6px;">
-                <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Filter</button>
-                <a href="addonmodules.php?module=noticebanner#nb-todo-banners" class="nb-btn nb-btn-ghost nb-btn-sm">Reset</a>
-            </div>
-        </form>
 
         <?php if (empty($visibleTodoRows)): ?>
             <div style="color:#94a3b8;font-size:14px;">No to-do entries match these filters.</div>
