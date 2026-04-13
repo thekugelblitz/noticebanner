@@ -248,6 +248,16 @@ details.nb-todo-add-fold > summary::-webkit-details-marker { display: none; }
 details.nb-todo-add-fold > summary.nb-todo-add-fold-sum::before { content: '▸ '; font-size: 11px; opacity: 0.55; }
 details.nb-todo-add-fold[open] > summary.nb-todo-add-fold-sum::before { content: '▾ '; }
 .nb-todo-add-fold-body { padding: 0 14px 14px; border-top: 1px solid #f1f5f9; }
+details.nb-todo-subtasks-fold { border: 1px dashed #c7d2fe; border-radius: 12px; background: linear-gradient(180deg, #fafbff 0%, #fff 100%); margin-top: 10px; overflow: hidden; }
+details.nb-todo-subtasks-fold > summary.nb-todo-subtasks-fold-sum { list-style: none; cursor: pointer; padding: 11px 14px; font-weight: 800; font-size: 12px; color: #6366f1; text-transform: uppercase; letter-spacing: 0.06em; user-select: none; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+details.nb-todo-subtasks-fold > summary::-webkit-details-marker { display: none; }
+details.nb-todo-subtasks-fold > summary.nb-todo-subtasks-fold-sum::before { content: '▸ '; font-size: 11px; opacity: 0.55; flex-shrink: 0; }
+details.nb-todo-subtasks-fold[open] > summary.nb-todo-subtasks-fold-sum::before { content: '▾ '; }
+.nb-todo-subtasks-fold-hint { font-size: 12px; font-weight: 600; color: #94a3b8; text-transform: none; letter-spacing: 0; margin-left: auto; }
+.nb-todo-subtasks-fold-body { padding: 0 14px 14px; border-top: 1px solid #f1f5f9; }
+.nb-todo-subtasks-empty { font-size: 12px; color: #94a3b8; margin: 0 0 10px; padding: 4px 0; }
+@keyframes nb-todo-toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+#nb-todo-toast-host .nb-todo-toast { animation: nb-todo-toast-in 0.2s ease; }
 .nb-todo-flat-list { display: flex; flex-direction: column; gap: 14px; }
 details.nb-todo-flat-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,0.05); }
 .nb-todo-flat-block { border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,0.05); }
@@ -2038,7 +2048,7 @@ try {
                         $subsOpen = count(array_filter($subs, static fn($x) => empty($x['is_completed'])));
                         $t_sel_ass = array_map('intval', $todo['assigned_admins'] ?? []);
                         ?>
-                        <details open class="nb-todo-flat-block nb-todo-task-fold">
+                        <details class="nb-todo-flat-block nb-todo-task-fold">
                             <summary class="nb-todo-task-fold-sum">
                                 <span><?php echo htmlspecialchars($sumTitle); ?></span>
                                 <?php if ($tu_display !== 'normal'): ?>
@@ -2052,6 +2062,7 @@ try {
                                     <?php endforeach; ?>
                                 </span>
                                 <span class="nb-todo-task-fold-hint"><?php echo count($subs); ?> sub · <?php echo (int)$subsOpen; ?> open</span>
+                                <span style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:none;letter-spacing:0;">— click to expand</span>
                             </summary>
                             <div class="nb-todo-task-fold-body">
                             <div class="nb-todo-flat-row">
@@ -2154,6 +2165,16 @@ try {
                                 </div>
                             </div>
 
+                            <details class="nb-todo-subtasks-fold">
+                                <summary class="nb-todo-subtasks-fold-sum">
+                                    Subtasks
+                                    <span style="font-size:12px;font-weight:600;color:#64748b;text-transform:none;letter-spacing:0;">(<?php echo count($subs); ?> · <?php echo (int)$subsOpen; ?> open)</span>
+                                    <span class="nb-todo-subtasks-fold-hint">Click to expand — edit or add</span>
+                                </summary>
+                                <div class="nb-todo-subtasks-fold-body">
+                            <?php if (empty($subs)): ?>
+                            <p class="nb-todo-subtasks-empty">No subtasks yet. Add one below.</p>
+                            <?php endif; ?>
                             <?php foreach ($subs as $sub): ?>
                             <?php
                             $sid = (int)$sub['id'];
@@ -2277,6 +2298,8 @@ try {
                                 </div>
                                 <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="margin-top:22px;">Add subtask</button>
                             </form>
+                                </div>
+                            </details>
                             </div>
                         </details>
                         <?php endforeach; ?>
@@ -2290,6 +2313,27 @@ try {
 </div><!-- /nb-pane-todo-banners -->
 <script>
 (function(){
+function nbTodoPaneToast(msg){
+var host = document.getElementById('nb-todo-toast-host');
+if(!host){
+host = document.createElement('div');
+host.id = 'nb-todo-toast-host';
+host.setAttribute('role','status');
+host.setAttribute('aria-live','polite');
+host.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:99999;display:flex;flex-direction:column;gap:8px;align-items:flex-end;pointer-events:none;max-width:min(360px,calc(100vw - 32px));';
+document.body.appendChild(host);
+}
+var t = document.createElement('div');
+t.className = 'nb-todo-toast';
+t.style.cssText = 'background:#0f172a;color:#fff;padding:11px 16px;border-radius:10px;font-size:13px;font-weight:600;line-height:1.4;box-shadow:0 10px 28px rgba(15,23,42,0.35);';
+t.textContent = msg;
+host.appendChild(t);
+setTimeout(function(){
+t.style.opacity = '0';
+t.style.transition = 'opacity 0.35s ease';
+setTimeout(function(){ if(t.parentNode) t.parentNode.removeChild(t); }, 360);
+}, 2800);
+}
 var pane = document.getElementById('nb-pane-todo-banners');
 if(!pane) return;
 pane.addEventListener('submit', function(e){
@@ -2317,10 +2361,11 @@ else { btn.classList.remove('nb-on'); btn.innerHTML = ''; }
 }
 return;
 }
-if(act === 'save_todo_row' && d.ok && Array.isArray(d.assigned_admins)){
+if(act === 'save_todo_row' && d.ok){
 var row = form.closest('.nb-todo-flat-row');
 var fold = form.closest('details.nb-todo-task-fold');
 var isSub = row && row.classList.contains('nb-todo-flat-sub');
+if(Array.isArray(d.assigned_admins)){
 var ids = d.assigned_admins;
 var labels = Array.isArray(d.assigned_admin_labels) ? d.assigned_admin_labels : [];
 function nbFillAssignChips(host){
@@ -2362,6 +2407,11 @@ sumHost.appendChild(c);
 }
 }
 }
+}
+var toastMsg = isSub
+? 'Subtask saved — live admin banner updated.'
+: 'Task saved — live admin banner updated.';
+nbTodoPaneToast(toastMsg);
 return;
 }
 if(act === 'delete'){
