@@ -235,6 +235,8 @@ $now = date('Y-m-d H:i:s');
 .nb-todo-date-pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: #f1f5f9; color: #475569; white-space: nowrap; }
 .nb-todo-date-pill.due-soon { background: #fff7ed; color: #c2410c; }
 .nb-todo-date-pill.overdue { background: #fef2f2; color: #b91c1c; }
+.nb-todo-kanban-card-assign { margin-top: 6px; display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; min-width: 0; max-width: 100%; overflow: hidden; }
+.nb-todo-kanban-card-assign .nb-todo-assignee-chip { flex: 0 1 auto; min-width: 0; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nb-todo-remark-line { font-size: 12px; color: #64748b; margin-top: 6px; line-height: 1.4; }
 .nb-todo-subbar { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
 .nb-todo-subcount { font-size: 11px; font-weight: 700; color: #64748b; }
@@ -269,7 +271,13 @@ details.nb-todo-task-fold > summary.nb-todo-task-fold-sum { list-style: none; di
 details.nb-todo-task-fold > summary::-webkit-details-marker { display: none; }
 details.nb-todo-task-fold > summary::before { content: '▾ '; font-size: 11px; opacity: 0.55; }
 details.nb-todo-task-fold:not([open]) > summary::before { content: '▸ '; }
-.nb-todo-task-fold-hint { font-size: 12px; font-weight: 600; color: #94a3b8; margin-left: auto; }
+.nb-todo-task-fold-hint { font-size: 12px; font-weight: 600; color: #94a3b8; margin-left: auto; flex-shrink: 0; white-space: nowrap; }
+.nb-todo-task-fold-title { min-width: 0; flex: 1 1 100px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: min(100%, 46vw); }
+@media (min-width: 900px) { .nb-todo-task-fold-title { max-width: min(100%, 560px); } }
+.nb-todo-task-fold-sum > .nb-priority { flex-shrink: 0; }
+.nb-todo-task-fold-sum .nb-todo-sum-assign-chips { flex: 0 1 auto; max-width: min(52vw, 280px); min-width: 0; flex-wrap: nowrap; overflow: hidden; }
+.nb-todo-task-fold-sum .nb-todo-sum-assign-chips .nb-todo-assignee-chip { min-width: 0; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-todo-task-fold-expand-hint { flex-shrink: 0; white-space: nowrap; }
 .nb-todo-meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 6px; }
 @media (max-width: 720px) { .nb-todo-meta-grid { grid-template-columns: 1fr; } }
 .nb-todo-assign-multi { min-height: 72px; width: 100%; }
@@ -1884,6 +1892,7 @@ try {
                         }
                         $ku = (isset($kc['urgency']) && in_array($kc['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $kc['urgency'] : 'normal';
                         $kpc = $priorityConfig[$ku] ?? $priorityConfig['normal'];
+                        $k_ass_ids = array_values(array_filter(array_map('intval', $kc['assigned_admins'] ?? [])));
                         ?>
                     <div class="nb-todo-card-v2<?php echo !empty($kc['is_completed']) ? ' nb-muted' : ''; ?>">
                         <div class="nb-todo-card-v2-head">
@@ -1902,6 +1911,17 @@ try {
                                     ?>"><?php echo htmlspecialchars($dueStr); ?></span>
                                     <?php endif; ?>
                                 </div>
+                                <?php if (!empty($k_ass_ids)): ?>
+                                <div class="nb-todo-assign-chips nb-todo-kanban-card-assign" aria-label="Assigned admins">
+                                    <?php foreach ($k_ass_ids as $kaid): if ($kaid <= 0) {
+                                        continue;
+                                    }
+                                    $knm = $adminMap[$kaid] ?? ('Admin #' . $kaid);
+                                    ?>
+                                    <span class="nb-todo-assignee-chip" title="<?php echo htmlspecialchars($knm, ENT_QUOTES, 'UTF-8'); ?>"><span class="nb-todo-assignee-glyph" aria-hidden="true">@</span><span><?php echo htmlspecialchars($knm, ENT_QUOTES, 'UTF-8'); ?></span></span>
+                                    <?php endforeach; ?>
+                                </div>
+                                <?php endif; ?>
                             </div>
                         </div>
                         <div class="nb-todo-actions">
@@ -2141,7 +2161,7 @@ try {
                         ?>
                         <details class="nb-todo-flat-block nb-todo-task-fold">
                             <summary class="nb-todo-task-fold-sum">
-                                <span><?php echo htmlspecialchars($sumTitle); ?></span>
+                                <span class="nb-todo-task-fold-title"><?php echo htmlspecialchars($sumTitle); ?></span>
                                 <span class="nb-priority" style="color:<?php echo htmlspecialchars($tu_pc['color'] ?? '#2563eb', ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($tu_pc['bg'] ?? '#eff6ff', ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($tu_pc['label'] ?? $tu_display); ?></span>
                                 <span class="nb-todo-assign-chips nb-todo-sum-assign-chips" aria-label="<?php echo !empty($t_sel_ass) ? 'Assigned admins' : ''; ?>"<?php echo empty($t_sel_ass) ? ' style="display:none;"' : ''; ?>>
                                     <?php foreach ($t_sel_ass as $taid): if ($taid <= 0) {
@@ -2151,7 +2171,7 @@ try {
                                     <?php endforeach; ?>
                                 </span>
                                 <span class="nb-todo-task-fold-hint"><?php echo count($subs); ?> sub · <?php echo (int)$subsOpen; ?> open</span>
-                                <span style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:none;letter-spacing:0;">— click to expand</span>
+                                <span class="nb-todo-task-fold-expand-hint" style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:none;letter-spacing:0;">— click to expand</span>
                             </summary>
                             <div class="nb-todo-task-fold-body">
                             <div class="nb-todo-flat-row">
