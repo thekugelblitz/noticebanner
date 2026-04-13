@@ -143,13 +143,6 @@ if (!class_exists('NoticeBannerHelper')) {
                 $blocks[] = ['type' => 'plain', 'text' => $line];
             }
 
-            $taskCount = 0;
-            foreach ($blocks as $b) {
-                if (($b['type'] ?? '') === 'task') {
-                    $taskCount++;
-                }
-            }
-
             $html = '<div class="nb-todo-banner-body">';
             foreach ($blocks as $b) {
                 if ($b['type'] === 'h') {
@@ -185,15 +178,13 @@ if (!class_exists('NoticeBannerHelper')) {
                         : '';
                     $depth = (int) ($b['depth'] ?? 0);
                     $cls = 'nb-todo-row nb-todo-depth-' . $depth . ($b['done'] ? ' nb-todo-row-done' : '');
-                    $brOp = 0.42 + min(0.4, $depth * 0.1);
-                    $bracket = '<span class="nb-todo-bracket" style="color:rgba(15,23,42,' . $brOp . ');" aria-hidden="true">[</span>';
-                    $html .= '<div class="' . $cls . '">' . $bracket . $cb . '<div class="nb-todo-row-main">'
+                    $html .= '<div class="' . $cls . '">' . $cb . '<div class="nb-todo-row-main">'
                         . '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $text . '</span>' . $due . '</div>'
                         . $noteHtml . '</div></div>';
                 }
             }
             $html .= '</div>';
-            return self::wrapTodoBannerFold($html, $taskCount);
+            return $html;
         }
 
         /** Inline CSS for To-Do checklist (injected once per page when a To-Do banner renders). */
@@ -223,17 +214,15 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-todo-banner-hit .nb-todo-cb{margin-top:2px;}
 .nb-todo-banner-hit:focus-visible{outline:2px solid #6366f1;outline-offset:2px;border-radius:4px;}
 .nb-todo-banner-live .nb-todo-row:hover{background:rgba(99,102,241,0.04);}
-.nb-todo-bracket{flex-shrink:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:700;font-size:14px;line-height:1.2;padding-top:3px;margin-right:1px;opacity:0.88;user-select:none;}
 .nb-todo-urg-pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.07);color:rgba(15,23,42,0.75);}
 .nb-todo-tag-pill{font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;background:rgba(99,102,241,0.12);color:#4338ca;margin-right:4px;}
-details.nb-todo-banner-fold{margin-top:4px;border:1px solid rgba(15,23,42,0.1);border-radius:10px;background:rgba(255,255,255,0.35);overflow:hidden;}
-details.nb-todo-banner-fold > summary.nb-todo-banner-fold-sum{list-style:none;cursor:pointer;display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;padding:10px 12px;font-size:13px;font-weight:700;color:inherit;user-select:none;}
-details.nb-todo-banner-fold > summary::-webkit-details-marker{display:none;}
-details.nb-todo-banner-fold > summary::before{content:"▸";font-size:11px;opacity:0.55;margin-right:2px;}
-details.nb-todo-banner-fold[open] > summary::before{content:"▾";}
-.nb-todo-banner-fold-meta{font-size:12px;font-weight:600;opacity:0.65;}
-.nb-todo-banner-fold-inner{padding:2px 10px 10px 10px;}
-.nb-todo-banner-head-toggle:hover{opacity:0.92;}
+details.nb-todo-banner-outer{display:block;width:100%;box-sizing:border-box;}
+details.nb-todo-banner-outer > summary.nb-todo-banner-outer-sum{list-style:none;cursor:pointer;user-select:none;display:flex;align-items:flex-start;gap:8px;width:100%;box-sizing:border-box;}
+details.nb-todo-banner-outer > summary::-webkit-details-marker{display:none;}
+details.nb-todo-banner-outer > summary.nb-todo-banner-outer-sum::before{content:"▸";flex-shrink:0;font-size:11px;opacity:0.55;line-height:1.5;margin-top:3px;}
+details.nb-todo-banner-outer[open] > summary.nb-todo-banner-outer-sum::before{content:"▾";}
+.nb-todo-banner-outer-meta{font-size:12px;font-weight:600;opacity:0.65;}
+.nb-todo-banner-outer-body{padding-top:8px;margin-top:4px;border-top:1px solid rgba(15,23,42,0.08);}
 </style>';
         }
 
@@ -376,38 +365,42 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             return $n;
         }
 
-        /** Wrap checklist in collapsed-by-default &lt;details&gt; (summary shows count + expand hint). */
-        private static function wrapTodoBannerFold(string $innerBodyHtml, int $taskCount): string {
-            $hint = $taskCount === 0 ? 'Empty' : ($taskCount === 1 ? '1 task' : $taskCount . ' tasks');
-            return '<details class="nb-todo-banner-fold">'
-                . '<summary class="nb-todo-banner-fold-sum"><span>Checklist</span> '
-                . '<span class="nb-todo-banner-fold-meta">' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8') . ' · Click to expand</span></summary>'
-                . '<div class="nb-todo-banner-fold-inner">' . $innerBodyHtml . '</div>'
-                . '</details>';
+        /** Count markdown checklist lines (client / synced body) for summary hints. */
+        private static function countTodoMarkdownTasks(string $raw): int {
+            $raw = str_replace(["\r\n", "\r"], "\n", $raw);
+            $c = 0;
+            foreach (explode("\n", $raw) as $line) {
+                if (preg_match('/^(\s*)-\s*\[([ xX])\]\s*(.+)$/', rtrim($line))) {
+                    $c++;
+                }
+            }
+            return $c;
         }
 
-        /** Admin-only: checklist with real todo IDs — click circles to toggle (reloads). */
-        private static function renderAdminTodoBannerInteractive(int $noticeId): string {
+        /**
+         * Admin-only: interactive checklist HTML + task count (no outer fold — fold wraps whole banner in renderNotices).
+         *
+         * @return array{html: string, count: int}
+         */
+        private static function adminTodoBannerContentAndCount(int $noticeId): array {
+            $empty = [
+                'html' => '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>',
+                'count' => 0,
+            ];
             if ($noticeId <= 0 || !function_exists('noticebanner_get_todos_for_notice')) {
-                return self::wrapTodoBannerFold(
-                    '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>',
-                    0
-                );
+                return $empty;
             }
             $tree = noticebanner_get_todos_for_notice($noticeId, self::currentAdminId());
             $count = self::countTodoTreeNodes($tree);
             if (empty($tree)) {
-                return self::wrapTodoBannerFold(
-                    '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>',
-                    0
-                );
+                return $empty;
             }
             $html = '<div class="nb-todo-banner-body nb-todo-banner-live">';
             foreach ($tree as $task) {
                 $html .= self::renderAdminTodoNodeHtml($task, 0);
             }
             $html .= '</div>';
-            return self::wrapTodoBannerFold($html, $count);
+            return ['html' => $html, 'count' => $count];
         }
 
         private static function renderAdminTodoNodeHtml(array $task, int $depth): string {
@@ -451,9 +444,8 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             $btn = '<button type="button" class="nb-todo-banner-hit" onclick="nbBannerTodoToggle(this,' . $id . ')" title="Toggle done">' . $cbInner . '</button>';
             $d = min(4, $depth);
             $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
-            $bracket = '<span class="nb-todo-bracket" style="color:' . $accentEsc . ';" aria-hidden="true">[</span>';
             $metaLine = ($urgHtml !== '' || $tagsHtml !== '') ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $urgHtml . $tagsHtml . '</div>' : '';
-            $row = '<div class="' . $cls . '" style="--nb-todo-accent:' . $accentEsc . ';">' . $bracket . $btn . '<div class="nb-todo-row-main">'
+            $row = '<div class="' . $cls . '" style="--nb-todo-accent:' . $accentEsc . ';">' . $btn . '<div class="nb-todo-row-main">'
                 . '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . '</div>'
                 . $metaLine
                 . $noteHtml . '</div></div>';
@@ -914,6 +906,7 @@ alert((d&&d.message)||"Could not update task");
                 }
 
                 $id       = 'nb_' . $n['id'];
+                $todoTaskCount = 0;
                 $bg       = $n['bg_color']   ?: '#fffae6';
                 $color    = $n['font_color'] ?: '#222';
                 $priority = $n['priority']   ?? 'normal';
@@ -936,10 +929,13 @@ alert((d&&d.message)||"Could not update task");
                         $stylePrefix = self::todoBannerStyles();
                     }
                     if ($area === 'admin' && $currentAdminId > 0) {
-                        $content = self::renderAdminTodoBannerInteractive((int)$n['id']);
+                        $todoParts = self::adminTodoBannerContentAndCount((int)$n['id']);
+                        $content = $todoParts['html'];
+                        $todoTaskCount = $todoParts['count'];
                         $needsBannerTodoJs = true;
                     } else {
                         $content = self::parseTodoBannerBody($n['notice_content'] ?? '');
+                        $todoTaskCount = self::countTodoMarkdownTasks($n['notice_content'] ?? '');
                     }
                 } else {
                     $content = self::parseMarkdown($n['notice_content'] ?? '');
@@ -1106,6 +1102,8 @@ alert((d&&d.message)||"Could not update task");
                     $pollHtml .= '</div>';
                 }
 
+                $todoOuterCollapse = !empty($n['is_todo_banner']) && !$isPromo && empty($n['expandable']);
+
                 // ── Body ──
                 // Promos: full-width slot (do not squeeze card beside Ack/Dismiss — fixes client theme flex bugs)
                 $bodyTop = $isPromo ? '0' : '10px';
@@ -1117,7 +1115,8 @@ alert((d&&d.message)||"Could not update task");
                         . $tagsHtml . $assignedHtml
                         . '</div>';
                 } else {
-                    $bodyHtml = '<div style="margin-top:' . $bodyTop . ';font-size:14px;line-height:1.7;max-width:880px;margin-left:auto;margin-right:auto;text-align:left;">'
+                    $bodyMt = $todoOuterCollapse ? '0' : $bodyTop;
+                    $bodyHtml = '<div style="margin-top:' . $bodyMt . ';font-size:14px;line-height:1.7;max-width:880px;margin-left:auto;margin-right:auto;text-align:left;">'
                         . $content . $btnHtml . $ticketHtml . $pollHtml
                         . $tagsHtml . $assignedHtml
                         . '</div>';
@@ -1137,12 +1136,10 @@ alert((d&&d.message)||"Could not update task");
                         . $tsHtml
                         . '</div>';
 
-                if (!empty($n['is_todo_banner']) && !$isPromo && empty($n['expandable'])) {
-                    $idJs = htmlspecialchars($id, ENT_QUOTES, 'UTF-8');
-                    $headerRow = '<div class="nb-todo-banner-head-toggle" role="button" tabindex="0" '
-                        . 'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" '
-                        . 'onclick="var r=document.getElementById(\'' . $idJs . '\');if(!r)return;var d=r.querySelector(\'details.nb-todo-banner-fold\');if(d){d.open=!d.open;}" style="cursor:pointer;border-radius:8px;" title="Toggle checklist">'
-                        . $headerRow . '</div>';
+                $todoMetaHtml = '';
+                if ($todoOuterCollapse) {
+                    $hint = $todoTaskCount === 0 ? 'Empty' : ($todoTaskCount === 1 ? '1 task' : $todoTaskCount . ' tasks');
+                    $todoMetaHtml = '<span class="nb-todo-banner-outer-meta"> · ' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8') . ' · Click to expand</span>';
                 }
 
                 $dismissBtn = '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" '
@@ -1202,15 +1199,30 @@ alert((d&&d.message)||"Could not update task");
                     }
                 } else {
                     $controls .= $dismissBtn . '</div>';
-                    $html .= '<div id="' . $id . '"' . $clientAttr . ' style="' . $bannerStyle . '">'
-                        . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
-                        . '<div style="flex:1;min-width:0;">'
-                        . $headerRow
-                        . $bodyHtml
-                        . '</div>'
-                        . $controls
-                        . '</div>'
-                        . '</div>';
+                    if ($todoOuterCollapse) {
+                        $todoDetailsClass = ($area === 'client' ? 'nb-client-notice-bar ' : '') . 'nb-todo-banner-outer';
+                        $html .= '<details id="' . $id . '" class="' . htmlspecialchars($todoDetailsClass, ENT_QUOTES, 'UTF-8') . '" style="' . $bannerStyle . '">'
+                            . '<summary class="nb-todo-banner-outer-sum">'
+                            . '<div style="flex:1;min-width:0;display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;box-sizing:border-box;">'
+                            . '<div style="flex:1;min-width:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px;">'
+                            . $headerRow . $todoMetaHtml
+                            . '</div>'
+                            . $controls
+                            . '</div>'
+                            . '</summary>'
+                            . '<div class="nb-todo-banner-outer-body">' . $bodyHtml . '</div>'
+                            . '</details>';
+                    } else {
+                        $html .= '<div id="' . $id . '"' . $clientAttr . ' style="' . $bannerStyle . '">'
+                            . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
+                            . '<div style="flex:1;min-width:0;">'
+                            . $headerRow
+                            . $bodyHtml
+                            . '</div>'
+                            . $controls
+                            . '</div>'
+                            . '</div>';
+                    }
                 }
             }
 
