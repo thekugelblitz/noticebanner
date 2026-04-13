@@ -1157,7 +1157,12 @@ alert((d&&d.message)||"Could not update task");
                         ? noticebanner_admin_todo_redirect_url((int)$n['id'], 'all')
                         : ('addonmodules.php?module=noticebanner&todo_banner_range=all&todo_notice_id=' . (int)$n['id'] . '#nb-todo-banners');
                     $ackBtn = '<a href="' . htmlspecialchars($todoMgrUrl, ENT_QUOTES, 'UTF-8') . '"'
-                        . ' style="padding:3px 11px;border-radius:5px;background:#312e81;color:#eef2ff;border:1px solid #1e1b4b;font-size:12px;font-weight:700;flex-shrink:0;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;">Manage Tasks</a>';
+                        . ' title="Manage tasks" aria-label="Manage tasks"'
+                        . ' style="padding:7px;border-radius:6px;background:#312e81;color:#eef2ff;border:1px solid #1e1b4b;flex-shrink:0;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;line-height:0;box-sizing:border-box;">'
+                        . '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+                        . '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>'
+                        . '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>'
+                        . '</svg></a>';
                 } elseif ($isPro && $entityId) {
                     $acked    = self::hasAcknowledged((int)$n['id'], $entityType, $entityId);
                     $btnId    = 'nb-ack-' . $n['id'];
