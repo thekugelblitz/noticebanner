@@ -2011,7 +2011,7 @@ try {
                                         <option value="<?php echo (int)$a->id; ?>"><?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?></option>
                                     <?php endforeach; ?>
                                 </select>
-                                <span style="font-size:11px;color:#94a3b8;">If set, only these admins see and edit this task.</span>
+                                <span style="font-size:11px;color:#94a3b8;">Primary owners for this task (everyone with access to the board still sees the task).</span>
                             </div>
                             <div style="grid-column:1/-1;">
                                 <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add task</button>

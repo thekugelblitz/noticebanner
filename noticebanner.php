@@ -1015,20 +1015,14 @@ function noticebanner_admin_can_access_todo_board(int $adminId, $notice): bool {
 
 if (!function_exists('noticebanner_admin_can_view_todo')) {
 /**
- * Per-task exclusivity: non-empty todo assigned_admins => only those admins; else any admin who passed board gate.
+ * Any admin who can open the To-Do banner sees all tasks on it. Per-task assigned_admins
+ * identifies who the work is for, not who may view it.
  *
  * @param array|object $todo
  * @param array|object $notice
  */
 function noticebanner_admin_can_view_todo(int $adminId, $todo, $notice): bool {
-    if (!noticebanner_admin_can_access_todo_board($adminId, $notice)) {
-        return false;
-    }
-    $ids = noticebanner_todo_assigned_admin_ids($todo);
-    if (empty($ids)) {
-        return true;
-    }
-    return in_array($adminId, $ids, true);
+    return noticebanner_admin_can_access_todo_board($adminId, $notice);
 }
 }
 
@@ -1164,7 +1158,7 @@ function noticebanner_get_notice_title_map(array $ids): array {
 }
 
 if (!function_exists('noticebanner_todo_banner_counts_for_admin')) {
-/** Parent-task open/done counts for the To-Do banner header (respects assignee visibility). */
+/** Parent-task open/done counts for the To-Do banner header (all tasks on the notice). */
 function noticebanner_todo_banner_counts_for_admin(int $noticeId, int $adminId): array {
     if ($noticeId <= 0) {
         return ['open' => 0, 'done' => 0];
