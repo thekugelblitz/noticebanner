@@ -52,6 +52,52 @@ $now = date('Y-m-d H:i:s');
 .nb-field input:focus, .nb-field select:focus, .nb-field textarea:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
 .nb-field textarea { resize: vertical; min-height: 120px; font-family: 'Fira Mono', 'Consolas', monospace; font-size: 13px; }
 
+/* Every datetime picker in this module uses the same chrome (not half native / half styled) */
+#nb-wrap input[type=datetime-local] {
+    min-width: 220px;
+    max-width: 100%;
+    padding: 8px 11px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 14px;
+    line-height: 1.35;
+    color: #1e293b;
+    background: #fff;
+    min-height: 40px;
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+    color-scheme: light;
+}
+#nb-wrap input[type=datetime-local]:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+}
+#nb-wrap input[type=datetime-local]::-webkit-calendar-picker-indicator {
+    cursor: pointer;
+    opacity: 0.75;
+    padding: 2px;
+}
+/* Inline text fields next to datetime in To-Do details (match .nb-field text) */
+#nb-wrap .nb-todo-details-body input[type=text]:not(.nb-tag-real-input),
+#nb-wrap .nb-todo-inline-form input[type=text] {
+    padding: 8px 11px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font-size: 14px;
+    color: #1e293b;
+    background: #fff;
+    min-height: 40px;
+    box-sizing: border-box;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+#nb-wrap .nb-todo-details-body input[type=text]:focus,
+#nb-wrap .nb-todo-inline-form input[type=text]:focus {
+    outline: none;
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+}
+
 /* ── Color row ── */
 .nb-color-row { display: flex; align-items: center; gap: 6px; }
 .nb-color-row input[type=color] { width: 36px; height: 32px; padding: 2px; border: 1px solid #cbd5e1; border-radius: 5px; cursor: pointer; }
@@ -1670,7 +1716,7 @@ try {
                                                 <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
                                                 <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
                                                 <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
-                                                <input type="datetime-local" name="todo_due_at" value="<?php echo !empty($todo['due_at']) ? date('Y-m-d\TH:i', strtotime($todo['due_at'])) : ''; ?>" style="font-size:13px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;">
+                                                <input type="datetime-local" name="todo_due_at" value="<?php echo !empty($todo['due_at']) ? date('Y-m-d\TH:i', strtotime($todo['due_at'])) : ''; ?>">
                                                 <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Save due</button>
                                             </div>
                                         </form>
@@ -1681,7 +1727,7 @@ try {
                                                 <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
                                                 <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
                                                 <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
-                                                <input type="text" name="todo_remarks" value="<?php echo htmlspecialchars($todo['remarks'] ?? ''); ?>" style="flex:1;min-width:200px;font-size:13px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;">
+                                                <input type="text" name="todo_remarks" value="<?php echo htmlspecialchars($todo['remarks'] ?? ''); ?>" style="flex:1;min-width:200px;">
                                                 <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Save note</button>
                                             </div>
                                         </form>
@@ -1691,8 +1737,8 @@ try {
                                             <input type="hidden" name="todo_parent_todo_id" value="<?php echo $tid; ?>">
                                             <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
                                             <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
-                                            <input type="text" name="todo_title" required placeholder="New subtask" style="flex:1;min-width:160px;font-size:13px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:8px;">
-                                            <input type="datetime-local" name="todo_due_at" style="font-size:12px;">
+                                            <input type="text" name="todo_title" required placeholder="New subtask" style="flex:1;min-width:160px;">
+                                            <input type="datetime-local" name="todo_due_at">
                                             <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Add subtask</button>
                                         </form>
                                         <div style="display:flex;gap:6px;flex-wrap:wrap;padding-top:4px;border-top:1px solid #f1f5f9;">
