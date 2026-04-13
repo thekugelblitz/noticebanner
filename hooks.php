@@ -214,6 +214,10 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-todo-banner-hit .nb-todo-cb{margin-top:2px;}
 .nb-todo-banner-hit:focus-visible{outline:2px solid #6366f1;outline-offset:2px;border-radius:4px;}
 .nb-todo-banner-live .nb-todo-row:hover{background:rgba(99,102,241,0.04);}
+.nb-todo-banner-rows-neutral .nb-todo-banner-live .nb-todo-row:hover{background:rgba(15,23,42,0.05);}
+.nb-todo-banner-rows-neutral .nb-todo-tag-pill{background:rgba(15,23,42,0.08);color:inherit;border:1px solid rgba(15,23,42,0.1);}
+.nb-todo-banner-rows-neutral .nb-todo-at{font-weight:700;color:inherit;background:rgba(15,23,42,0.08);border-radius:4px;padding:0 4px;}
+.nb-todo-banner-rows-neutral .nb-todo-urg-pill{background:rgba(15,23,42,0.08);color:inherit;}
 .nb-todo-urg-pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.07);color:rgba(15,23,42,0.75);}
 .nb-todo-tag-pill{font-size:10px;font-weight:600;padding:2px 7px;border-radius:6px;background:rgba(99,102,241,0.12);color:#4338ca;margin-right:4px;}
 details.nb-todo-banner-outer{display:block;width:100%;box-sizing:border-box;}
@@ -408,7 +412,7 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
          */
         private static function adminTodoBannerContentAndCount(int $noticeId): array {
             $empty = [
-                'html' => '<div class="nb-todo-banner-body nb-todo-banner-live"><div class="nb-todo-banner-empty">No tasks yet.</div></div>',
+                'html' => '<div class="nb-todo-banner-body nb-todo-banner-live nb-todo-banner-rows-neutral"><div class="nb-todo-banner-empty">No tasks yet.</div></div>',
                 'count' => 0,
             ];
             if ($noticeId <= 0 || !function_exists('noticebanner_get_todos_for_notice')) {
@@ -419,15 +423,18 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             if (empty($tree)) {
                 return $empty;
             }
-            $html = '<div class="nb-todo-banner-body nb-todo-banner-live">';
+            $html = '<div class="nb-todo-banner-body nb-todo-banner-live nb-todo-banner-rows-neutral">';
             foreach ($tree as $task) {
-                $html .= self::renderAdminTodoNodeHtml($task, 0);
+                $html .= self::renderAdminTodoNodeHtml($task, 0, true);
             }
             $html .= '</div>';
             return ['html' => $html, 'count' => $count];
         }
 
-        private static function renderAdminTodoNodeHtml(array $task, int $depth): string {
+        /**
+         * @param bool $neutralRows When true (banner checklist), skip per-task accent colors so notice banner colors dominate.
+         */
+        private static function renderAdminTodoNodeHtml(array $task, int $depth, bool $neutralRows = false): string {
             $id = (int)($task['id'] ?? 0);
             $done = !empty($task['is_completed']);
             $titleRaw = (string)($task['title'] ?? '');
@@ -436,10 +443,12 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             $urgency = function_exists('noticebanner_normalize_todo_urgency')
                 ? noticebanner_normalize_todo_urgency((string)($task['urgency'] ?? 'normal'))
                 : 'normal';
-            $accent = !empty($task['accent_color'])
-                ? (string)$task['accent_color']
-                : (function_exists('noticebanner_todo_urgency_default_hex') ? noticebanner_todo_urgency_default_hex($urgency) : '#2563eb');
-            $accentEsc = htmlspecialchars($accent, ENT_QUOTES, 'UTF-8');
+            if (!$neutralRows) {
+                $accent = !empty($task['accent_color'])
+                    ? (string)$task['accent_color']
+                    : (function_exists('noticebanner_todo_urgency_default_hex') ? noticebanner_todo_urgency_default_hex($urgency) : '#2563eb');
+                $accentEsc = htmlspecialchars($accent, ENT_QUOTES, 'UTF-8');
+            }
             $dueHtml = '';
             if (!empty($task['due_at'])) {
                 $dueHtml = '<span class="nb-todo-due-pill">' . htmlspecialchars(date('M j, Y g:ia', strtotime($task['due_at'])), ENT_QUOTES, 'UTF-8') . '</span>';
@@ -469,14 +478,18 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             $d = min(4, $depth);
             $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
             $metaLine = ($urgHtml !== '' || $tagsHtml !== '') ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $urgHtml . $tagsHtml . '</div>' : '';
-            $row = '<div class="' . $cls . '" style="--nb-todo-accent:' . $accentEsc . ';">' . $btn . '<div class="nb-todo-row-main">'
+            $rowAttr = '';
+            if (!$neutralRows) {
+                $rowAttr = ' style="--nb-todo-accent:' . $accentEsc . ';"';
+            }
+            $row = '<div class="' . $cls . '"' . $rowAttr . '>' . $btn . '<div class="nb-todo-row-main">'
                 . '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . '</div>'
                 . $metaLine
                 . $noteHtml . '</div></div>';
             $sub = '';
             if (!empty($task['children']) && is_array($task['children'])) {
                 foreach ($task['children'] as $ch) {
-                    $sub .= self::renderAdminTodoNodeHtml($ch, $depth + 1);
+                    $sub .= self::renderAdminTodoNodeHtml($ch, $depth + 1, $neutralRows);
                 }
             }
             return $row . $sub;
@@ -526,6 +539,34 @@ alert((d&&d.message)||"Could not update task");
             ];
             [$bg, $fg, $label] = $map[$priority] ?? $map['normal'];
             return '<span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:11px;font-weight:700;background:' . $bg . ';color:' . $fg . ';margin-left:8px;vertical-align:middle;">' . $label . '</span>';
+        }
+
+        /** Muted priority chip so banner bg/font colors stay primary (To-Do banners). */
+        private static function priorityBadgeSoft(string $priority): string {
+            $map = [
+                'critical' => 'Critical',
+                'high'     => 'High',
+                'normal'   => 'Normal',
+                'low'      => 'Low',
+            ];
+            $label = $map[$priority] ?? $map['normal'];
+            return '<span style="display:inline-block;padding:1px 8px;border-radius:12px;font-size:11px;font-weight:700;background:rgba(15,23,42,0.08);color:inherit;opacity:0.88;margin-left:8px;vertical-align:middle;">' . htmlspecialchars($label, ENT_QUOTES, 'UTF-8') . '</span>';
+        }
+
+        /** Left stripe color derived from banner background (notice “Background” picker), not per-task accents. */
+        private static function todoBannerLeftBorderColor(string $bgHex, string $fallbackAccent): string {
+            $hex = trim($bgHex);
+            if (!preg_match('/^#([0-9A-Fa-f]{6})$/', $hex, $m)) {
+                return $fallbackAccent;
+            }
+            $r = hexdec(substr($m[1], 0, 2));
+            $g = hexdec(substr($m[1], 2, 2));
+            $b = hexdec(substr($m[1], 4, 2));
+            $mix = 0.42;
+            $r2 = (int) round($r * (1 - $mix) + 30 * $mix);
+            $g2 = (int) round($g * (1 - $mix) + 58 * $mix);
+            $b2 = (int) round($b * (1 - $mix) + 138 * $mix);
+            return sprintf('#%02x%02x%02x', max(0, min(255, $r2)), max(0, min(255, $g2)), max(0, min(255, $b2)));
         }
 
         // ── Get current admin ID ─────────────────────────────────────────────
@@ -1006,11 +1047,18 @@ alert((d&&d.message)||"Could not update task");
                         . '</div>';
                 }
 
-                // ── Acknowledge button (Pro) — uses AJAX so no page reload needed ──
+                // ── Acknowledge (Pro) or Manage Tasks (admin To-Do banner → task manager) ──
                 $ackBtn = '';
                 $entityId   = ($area === 'admin') ? $currentAdminId : $currentClientId;
                 $entityType = $area === 'admin' ? 'admin' : 'client';
-                if ($isPro && $entityId) {
+                $isAdminTodoBanner = !empty($n['is_todo_banner']) && $area === 'admin' && $currentAdminId > 0;
+                if ($isAdminTodoBanner) {
+                    $todoMgrUrl = function_exists('noticebanner_admin_todo_redirect_url')
+                        ? noticebanner_admin_todo_redirect_url((int)$n['id'], 'all')
+                        : ('addonmodules.php?module=noticebanner&todo_banner_range=all&todo_notice_id=' . (int)$n['id'] . '#nb-todo-banners');
+                    $ackBtn = '<a href="' . htmlspecialchars($todoMgrUrl, ENT_QUOTES, 'UTF-8') . '"'
+                        . ' style="padding:3px 11px;border-radius:5px;background:#312e81;color:#eef2ff;border:1px solid #1e1b4b;font-size:12px;font-weight:700;flex-shrink:0;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;">Manage Tasks</a>';
+                } elseif ($isPro && $entityId) {
                     $acked    = self::hasAcknowledged((int)$n['id'], $entityType, $entityId);
                     $btnId    = 'nb-ack-' . $n['id'];
                     if ($acked) {
@@ -1157,7 +1205,7 @@ alert((d&&d.message)||"Could not update task");
                         . '</div>'
                     : '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:6px;">'
                         . '<span style="font-size:16px;font-weight:700;">' . $title . '</span>'
-                        . self::priorityBadge($priority)
+                        . (!empty($n['is_todo_banner']) ? self::priorityBadgeSoft($priority) : self::priorityBadge($priority))
                         . $pinnedHtml
                         . $tsHtml
                         . '</div>';
@@ -1175,11 +1223,15 @@ alert((d&&d.message)||"Could not update task");
                 $controls = '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;">'
                     . $ackBtn;
 
+                $stripBorder = $accent;
+                if (!empty($n['is_todo_banner']) && !$isPromo) {
+                    $stripBorder = self::todoBannerLeftBorderColor($bg, $accent);
+                }
                 $bannerStyle = $isPromo
                     ? ($area === 'client'
                         ? ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:0;margin:0;box-shadow:none;width:100%;max-width:100%;box-sizing:border-box;clear:both;overflow:visible;')
                         : ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:10px 12px;box-shadow:none;width:100%;max-width:100%;box-sizing:border-box;clear:both;overflow:visible;'))
-                    : ('background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;'
+                    : ('background:' . $bg . ';border-left:4px solid ' . $stripBorder . ';padding:12px 20px;'
                     . 'color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);');
 
                 // Never hide promo body behind Expand — template card must always show on client
