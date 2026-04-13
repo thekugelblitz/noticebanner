@@ -1159,6 +1159,27 @@ function noticebanner_output($vars) {
     $edit_notice = null;
     $message     = '';
 
+    if (!empty($_GET['edit_id'])) {
+        $id = (int)$_GET['edit_id'];
+        if ($id > 0) {
+            $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
+            if ($row) {
+                $edit_notice = (array)$row;
+                $edit_notice['poll_options']    = array_map('html_entity_decode', json_decode($edit_notice['poll_options'] ?? '[]', true) ?: []);
+                $rawRes = json_decode($edit_notice['poll_results'] ?? '{}', true) ?: [];
+                $decRes = [];
+                foreach ($rawRes as $k => $v) $decRes[html_entity_decode($k)] = $v;
+                $edit_notice['poll_results']    = $decRes;
+                $edit_notice['assigned_admins'] = json_decode($edit_notice['assigned_admins'] ?? '[]', true) ?: [];
+                $edit_notice['client_groups']   = json_decode($edit_notice['client_groups'] ?? '[]', true) ?: [];
+                $edit_notice['target_clients']  = json_decode($edit_notice['target_clients'] ?? '[]', true) ?: [];
+                $edit_notice['target_servers']  = json_decode($edit_notice['target_servers'] ?? '[]', true) ?: [];
+                $edit_notice['target_products'] = json_decode($edit_notice['target_products'] ?? '[]', true) ?: [];
+                $edit_notice['page_slugs']      = json_decode($edit_notice['page_slugs'] ?? '[]', true) ?: [];
+            }
+        }
+    }
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // ── Client search (AJAX) ──
@@ -1314,7 +1335,7 @@ function noticebanner_output($vars) {
             }
             if (!empty($_POST['todo_redirect_notice_id'])) {
                 $nid = (int)$_POST['todo_redirect_notice_id'];
-                header('Location: addonmodules.php?module=noticebanner&todo_notice_id=' . $nid . '#nb-todos');
+                header('Location: addonmodules.php?module=noticebanner&todo_notice_id=' . $nid . '#nb-todo-banners');
                 exit;
             }
             header('Location: ' . $_SERVER['REQUEST_URI']);
@@ -1831,6 +1852,22 @@ function noticebanner_output($vars) {
     $todoNoticeMap = noticebanner_get_notice_title_map($todoNoticeIds);
     $editNoticeTodos = isset($edit_notice['id']) ? noticebanner_get_todos_for_notice((int)$edit_notice['id']) : [];
     $todoBanners = array_values(array_filter($notices, fn($n) => !empty($n['is_todo_banner'])));
+    $notices = array_values(array_filter($notices, fn($n) => empty($n['is_todo_banner'])));
+    $todoBannerRange = trim((string)($_GET['todo_banner_range'] ?? '3m'));
+    $todoBannerNoticeIds = [];
+    try {
+        $q = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->select('notice_id')->distinct();
+        if ($todoBannerRange === '3m') {
+            $q->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-3 months')));
+        } elseif ($todoBannerRange === '6m') {
+            $q->where('created_at', '>=', date('Y-m-d H:i:s', strtotime('-6 months')));
+        }
+        $todoBannerNoticeIds = array_map('intval', $q->pluck('notice_id')->toArray());
+    } catch (\Exception $e) {}
+    if ($todoBannerRange !== 'all') {
+        $idSet = array_flip($todoBannerNoticeIds);
+        $todoBanners = array_values(array_filter($todoBanners, fn($n) => isset($idSet[(int)$n['id']])));
+    }
 
     include __DIR__ . '/templates/admin.tpl';
 }
