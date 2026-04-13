@@ -1057,14 +1057,31 @@ function noticebanner_get_todos_flat(array $filters = []): array {
 }
 
 if (!function_exists('noticebanner_sync_todo_banner_content')) {
+/**
+ * Rebuild mod_noticebanner.notice_content from tasks so admin/client banners show the live checklist.
+ * Must tolerate Capsule returning each row as object or array (otherwise sync failed silently before).
+ */
 function noticebanner_sync_todo_banner_content(int $noticeId): void {
-    if ($noticeId <= 0) return;
+    if ($noticeId <= 0) {
+        return;
+    }
+    $todoVal = static function ($row, string $key) {
+        if (is_array($row)) {
+            return $row[$key] ?? null;
+        }
+        if (is_object($row)) {
+            return $row->{$key} ?? null;
+        }
+        return null;
+    };
     try {
         $banner = \WHMCS\Database\Capsule::table('mod_noticebanner')
             ->where('id', $noticeId)
             ->where('is_todo_banner', 1)
             ->first(['id', 'notice_title']);
-        if (!$banner) return;
+        if (!$banner) {
+            return;
+        }
 
         $rows = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')
             ->where('notice_id', $noticeId)
@@ -1072,29 +1089,39 @@ function noticebanner_sync_todo_banner_content(int $noticeId): void {
             ->orderBy('sort_order', 'asc')
             ->orderBy('id', 'asc')
             ->get(['id', 'parent_todo_id', 'title', 'is_completed', 'due_at'])
-            ->toArray();
+            ->all();
 
         $parents = [];
         $children = [];
         foreach ($rows as $r) {
-            $line = ($r->is_completed ? '- [x] ' : '- [ ] ') . trim((string)$r->title);
-            if (!empty($r->due_at)) {
-                $line .= ' (Due: ' . date('M j, Y g:ia', strtotime($r->due_at)) . ')';
+            $completed = (int)$todoVal($r, 'is_completed');
+            $title = trim((string)$todoVal($r, 'title'));
+            $dueRaw = $todoVal($r, 'due_at');
+            $line = ($completed ? '- [x] ' : '- [ ] ') . $title;
+            if (!empty($dueRaw)) {
+                $line .= ' (Due: ' . date('M j, Y g:ia', strtotime((string)$dueRaw)) . ')';
             }
-            if (!empty($r->parent_todo_id)) {
-                $pid = (int)$r->parent_todo_id;
-                if (!isset($children[$pid])) $children[$pid] = [];
+            $parentId = $todoVal($r, 'parent_todo_id');
+            $rowId = (int)$todoVal($r, 'id');
+            if (!empty($parentId)) {
+                $pid = (int)$parentId;
+                if (!isset($children[$pid])) {
+                    $children[$pid] = [];
+                }
                 $children[$pid][] = '  ' . $line;
-            } else {
-                $parents[(int)$r->id] = $line;
+            } elseif ($rowId > 0) {
+                $parents[$rowId] = $line;
             }
         }
 
-        $contentLines = ["### " . ($banner->notice_title ?: 'To-Do'), ''];
+        $bannerTitle = is_object($banner) ? (string)($banner->notice_title ?? '') : (string)($banner['notice_title'] ?? '');
+        $contentLines = ['### ' . ($bannerTitle !== '' ? $bannerTitle : 'To-Do'), ''];
         foreach ($parents as $pid => $pline) {
             $contentLines[] = $pline;
             if (!empty($children[$pid])) {
-                foreach ($children[$pid] as $cline) $contentLines[] = $cline;
+                foreach ($children[$pid] as $cline) {
+                    $contentLines[] = $cline;
+                }
             }
         }
         if (count($contentLines) <= 2) {
@@ -1107,7 +1134,9 @@ function noticebanner_sync_todo_banner_content(int $noticeId): void {
                 'notice_content' => implode("\n", $contentLines),
                 'updated_at' => date('Y-m-d H:i:s'),
             ]);
-    } catch (\Exception $e) {}
+    } catch (\Exception $e) {
+        // Leave existing content; avoid breaking admin on transient DB issues
+    }
 }
 }
 
@@ -1707,6 +1736,7 @@ function noticebanner_output($vars) {
                         'updated_at'           => date('Y-m-d H:i:s'),
                     ]);
                     noticebanner_log($newId, 'todo_banner_created', $title);
+                    noticebanner_sync_todo_banner_content((int)$newId);
                     $_SESSION['nb_noticebanner_flash'] = '<div class="nb-alert nb-alert-success">To-Do banner created. Add tasks below.</div>';
                     $tr = trim((string)($_POST['todo_banner_range'] ?? '3m'));
                     header('Location: ' . noticebanner_admin_todo_redirect_url((int)$newId, $tr));
@@ -1729,6 +1759,7 @@ function noticebanner_output($vars) {
                             'updated_at'     => date('Y-m-d H:i:s'),
                         ]);
                     noticebanner_log($noticeId, 'todo_banner_promoted', 'Promoted existing notice to To-Do banner');
+                    noticebanner_sync_todo_banner_content($noticeId);
                     $_SESSION['nb_noticebanner_flash'] = '<div class="nb-alert nb-alert-success">Notice is now a To-Do banner.</div>';
                     header('Location: ' . noticebanner_admin_todo_redirect_url($noticeId, $tr));
                     exit;
@@ -1740,7 +1771,6 @@ function noticebanner_output($vars) {
         if (isset($_POST['save_todo_banner_quick'])) {
             $bannerId = (int)($_POST['todo_banner_edit_id'] ?? 0);
             $title = trim((string)($_POST['todo_banner_edit_title'] ?? ''));
-            $content = trim((string)($_POST['todo_banner_edit_content'] ?? ''));
             $visibleAdmins = isset($_POST['todo_banner_edit_visible_admins']) ? 1 : 0;
             $assignedAdmins = isset($_POST['todo_banner_edit_assigned_admins']) && is_array($_POST['todo_banner_edit_assigned_admins'])
                 ? array_values(array_unique(array_map('intval', $_POST['todo_banner_edit_assigned_admins']))) : [];
@@ -1753,14 +1783,15 @@ function noticebanner_output($vars) {
                         ->where('id', $bannerId)
                         ->where('is_todo_banner', 1)
                         ->update([
-                            'notice_title'   => $title,
-                            'notice_content' => $content,
-                            'show_to_admins' => $visibleAdmins,
-                            'show_to_clients'=> 0,
-                            'assigned_admins'=> json_encode($assignedAdmins),
+                            'notice_title'    => $title,
+                            'show_to_admins'  => $visibleAdmins,
+                            'show_to_clients' => 0,
+                            'assigned_admins' => json_encode($assignedAdmins),
                             'mentioned_admins'=> json_encode($assignedAdmins),
-                            'updated_at'     => date('Y-m-d H:i:s'),
+                            'updated_at'      => date('Y-m-d H:i:s'),
                         ]);
+                    // Rebuild banner body from tasks — never overwrite with a separate "description" field
+                    noticebanner_sync_todo_banner_content($bannerId);
                     noticebanner_log($bannerId, 'todo_banner_updated', $title);
                     $_SESSION['nb_noticebanner_flash'] = '<div class="nb-alert nb-alert-success">To-Do banner saved.</div>';
                     header('Location: ' . noticebanner_admin_todo_redirect_url($bannerId, $tr));

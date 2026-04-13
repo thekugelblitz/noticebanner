@@ -1491,10 +1491,9 @@ try {
                                 <label>Title</label>
                                 <input type="text" name="todo_banner_edit_title" required value="<?php echo htmlspecialchars($selectedBanner['notice_title']); ?>">
                             </div>
-                            <div class="nb-field" style="margin:0 0 8px 0;">
-                                <label>Description</label>
-                                <input type="text" name="todo_banner_edit_content" value="<?php echo htmlspecialchars($selectedBanner['notice_content'] ?? ''); ?>">
-                            </div>
+                            <p style="margin:0 0 10px 0;font-size:12px;color:#64748b;line-height:1.5;">
+                                The <strong>admin banner body</strong> is built automatically from your tasks (checklist markdown). Edit tasks in the cards below — no separate description field, so the live banner cannot get out of sync.
+                            </p>
                             <div class="nb-field" style="margin:0 0 8px 0;">
                                 <label>Tagged admins</label>
                                 <?php $selAdmins = array_map('intval', $selectedBanner['assigned_admins'] ?? []); ?>
