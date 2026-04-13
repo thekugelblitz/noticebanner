@@ -237,6 +237,21 @@ $now = date('Y-m-d H:i:s');
 .nb-todo-date-pill.overdue { background: #fef2f2; color: #b91c1c; }
 .nb-todo-kanban-card-assign { margin-top: 6px; display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; min-width: 0; max-width: 100%; overflow: hidden; }
 .nb-todo-kanban-card-assign .nb-todo-assignee-chip { flex: 0 1 auto; min-width: 0; max-width: 132px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nb-todo-kanban-track { min-height: 40px; }
+.nb-todo-card-v2[data-nb-todo-id] { cursor: grab; }
+.nb-todo-card-v2.sortable-chosen { cursor: grabbing; }
+.nb-todo-activity-fold { margin-top: 12px; border: 1px dashed #c7d2fe; border-radius: 10px; background: #fafbff; }
+.nb-todo-activity-fold > summary { list-style: none; cursor: pointer; padding: 10px 12px; font-size: 12px; font-weight: 800; color: #6366f1; text-transform: uppercase; letter-spacing: 0.05em; }
+.nb-todo-activity-fold > summary::-webkit-details-marker { display: none; }
+.nb-todo-activity-body { padding: 0 12px 12px; border-top: 1px solid #e2e8f0; }
+.nb-todo-timeline { list-style: none; margin: 0; padding: 0; font-size: 12px; color: #334155; }
+.nb-todo-timeline li { padding: 8px 0; border-bottom: 1px solid #f1f5f9; }
+.nb-todo-timeline li:last-child { border-bottom: none; }
+.nb-todo-tl-meta { display: block; font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.nb-todo-tl-comment .nb-todo-tl-body { white-space: pre-wrap; word-break: break-word; }
+.nb-todo-file-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; padding: 6px 0; border-bottom: 1px solid #f1f5f9; }
+.nb-todo-file-row:last-child { border-bottom: none; }
+.nb-todo-comment-tools { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .nb-todo-remark-line { font-size: 12px; color: #64748b; margin-top: 6px; line-height: 1.4; }
 .nb-todo-subbar { margin-top: 8px; display: flex; align-items: center; gap: 8px; }
 .nb-todo-subcount { font-size: 11px; font-weight: 700; color: #64748b; }
@@ -1854,6 +1869,14 @@ try {
                     <input type="search" name="todo_kanban_q" value="<?php echo $todoKanbanQE; ?>" placeholder="Title, notes, tags…" autocomplete="off">
                 </div>
                 <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Apply</button>
+                <?php
+                $nbCsvQ = ['module' => 'noticebanner', 'nb_todo_export' => 'csv', 'todo_banner_range' => $todoBannerRange];
+                if ($todoKanbanQ !== '') {
+                    $nbCsvQ['todo_kanban_q'] = $todoKanbanQ;
+                }
+                $nbCsvHref = 'addonmodules.php?' . http_build_query($nbCsvQ);
+                ?>
+                <a href="<?php echo htmlspecialchars($nbCsvHref, ENT_QUOTES, 'UTF-8'); ?>" class="nb-btn nb-btn-ghost nb-btn-sm">Export CSV</a>
             </form>
             <div style="display:flex;gap:8px;flex-wrap:wrap;">
                 <button type="button" class="nb-btn nb-btn-primary nb-btn-sm" onclick="nbToggleSection('nb-new-banner-body','nb-new-banner-toggle')">+ New banner</button>
@@ -1876,6 +1899,7 @@ try {
                         <?php echo htmlspecialchars($meta['label']); ?>
                         <span class="nb-todo-col-c"><?php echo count($colRows); ?></span>
                     </div>
+                    <div class="nb-todo-kanban-track" data-nb-kanban-col="<?php echo htmlspecialchars($colKey, ENT_QUOTES, 'UTF-8'); ?>">
                     <?php foreach ($colRows as $kc): ?>
                         <?php
                         $kNid = (int)$kc['notice_id'];
@@ -1894,7 +1918,7 @@ try {
                         $kpc = $priorityConfig[$ku] ?? $priorityConfig['normal'];
                         $k_ass_ids = array_values(array_filter(array_map('intval', $kc['assigned_admins'] ?? [])));
                         ?>
-                    <div class="nb-todo-card-v2<?php echo !empty($kc['is_completed']) ? ' nb-muted' : ''; ?>">
+                    <div class="nb-todo-card-v2<?php echo !empty($kc['is_completed']) ? ' nb-muted' : ''; ?>" data-nb-todo-id="<?php echo (int)($kc['id'] ?? 0); ?>">
                         <div class="nb-todo-card-v2-head">
                             <div style="flex:1;min-width:0;">
                                 <?php if ($isSub): ?>
@@ -1930,8 +1954,9 @@ try {
                     </div>
                     <?php endforeach; ?>
                     <?php if (empty($colRows) && $todoKanbanQ === ''): ?>
-                    <div style="font-size:12px;color:#94a3b8;padding:6px 4px;">—</div>
+                    <div class="nb-todo-kanban-empty" style="font-size:12px;color:#94a3b8;padding:6px 4px;">—</div>
                     <?php endif; ?>
+                    </div>
                 </div>
                 <?php endforeach; ?>
             </div>
@@ -2158,6 +2183,8 @@ try {
                         $tu_pc = $priorityConfig[$tu_display] ?? $priorityConfig['normal'];
                         $subsOpen = count(array_filter($subs, static fn($x) => empty($x['is_completed'])));
                         $t_sel_ass = array_map('intval', $todo['assigned_admins'] ?? []);
+                        $tid_timeline = function_exists('noticebanner_get_todo_timeline') ? noticebanner_get_todo_timeline($tid) : [];
+                        $tid_attachments = function_exists('noticebanner_get_todo_attachments_list') ? noticebanner_get_todo_attachments_list($tid) : [];
                         ?>
                         <details class="nb-todo-flat-block nb-todo-task-fold">
                             <summary class="nb-todo-task-fold-sum">
@@ -2272,6 +2299,70 @@ try {
                                             <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete</button>
                                         </form>
                                     </div>
+                                    <details class="nb-todo-activity-fold">
+                                        <summary>Activity &amp; files</summary>
+                                        <div class="nb-todo-activity-body">
+                                            <ul class="nb-todo-timeline" id="nb-tl-<?php echo (int)$tid; ?>">
+                                                <?php foreach ($tid_timeline as $ev): ?>
+                                                <li class="nb-todo-tl-i nb-todo-tl-<?php echo htmlspecialchars($ev['kind'] ?? 'history', ENT_QUOTES, 'UTF-8'); ?><?php echo ($ev['kind'] ?? '') === 'comment' ? ' nb-todo-tl-comment' : ''; ?>"<?php echo (($ev['kind'] ?? '') === 'comment') ? ' data-nb-comment-id="' . (int)($ev['id'] ?? 0) . '"' : ''; ?>>
+                                                    <span class="nb-todo-tl-meta"><?php echo htmlspecialchars(date('M j, Y g:ia', strtotime($ev['created_at'] ?? 'now'))); ?> · <?php echo htmlspecialchars($ev['admin_name'] ?? ''); ?></span>
+                                                    <?php if (($ev['kind'] ?? '') === 'comment'): ?>
+                                                    <div class="nb-todo-tl-body"><?php echo nl2br(htmlspecialchars((string)($ev['body'] ?? ''), ENT_QUOTES, 'UTF-8')); ?></div>
+                                                    <?php if (!empty($currentAdminId) && (int)($ev['admin_id'] ?? 0) === (int)$currentAdminId): ?>
+                                                    <form method="post" class="nb-todo-ajax-form" style="display:inline;margin-top:6px;" onsubmit="return confirm('Delete this comment?');">
+                                                        <input type="hidden" name="nb_todo_action" value="todo_comment_delete">
+                                                        <input type="hidden" name="todo_id" value="<?php echo (int)$tid; ?>">
+                                                        <input type="hidden" name="todo_comment_id" value="<?php echo (int)($ev['id'] ?? 0); ?>">
+                                                        <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                        <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="padding:2px 8px;font-size:11px;">Remove</button>
+                                                    </form>
+                                                    <?php endif; ?>
+                                                    <?php else: ?>
+                                                    <div class="nb-todo-tl-summary"><?php echo htmlspecialchars((string)($ev['summary'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></div>
+                                                    <?php endif; ?>
+                                                </li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                            <div id="nb-fl-<?php echo (int)$tid; ?>">
+                                                <?php foreach ($tid_attachments as $att): ?>
+                                                <div class="nb-todo-file-row" data-nb-att-id="<?php echo (int)($att['id'] ?? 0); ?>">
+                                                    <a href="addonmodules.php?module=noticebanner&amp;nb_todo_attachment=<?php echo (int)($att['id'] ?? 0); ?>"><?php echo htmlspecialchars($att['original_filename'] ?? 'file'); ?></a>
+                                                    <span style="color:#94a3b8;"><?php echo (int)($att['size'] ?? 0) > 0 ? number_format((int)$att['size'] / 1024, 1) . ' KB' : ''; ?></span>
+                                                    <span style="color:#94a3b8;"><?php echo htmlspecialchars($att['admin_name'] ?? ''); ?></span>
+                                                    <form method="post" class="nb-todo-ajax-form" style="display:inline;margin-left:auto;" onsubmit="return confirm('Delete this file?');">
+                                                        <input type="hidden" name="nb_todo_action" value="todo_attachment_delete">
+                                                        <input type="hidden" name="todo_id" value="<?php echo (int)$tid; ?>">
+                                                        <input type="hidden" name="todo_attachment_id" value="<?php echo (int)($att['id'] ?? 0); ?>">
+                                                        <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                        <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="padding:2px 8px;font-size:11px;">Delete</button>
+                                                    </form>
+                                                </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                            <div class="nb-todo-comment-tools">
+                                                <form method="post" class="nb-todo-ajax-form nb-todo-comment-form">
+                                                    <input type="hidden" name="nb_todo_action" value="todo_comment_add">
+                                                    <input type="hidden" name="todo_id" value="<?php echo (int)$tid; ?>">
+                                                    <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                    <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                    <label style="font-size:11px;font-weight:700;color:#64748b;">Add comment</label>
+                                                    <textarea name="todo_comment_body" rows="2" placeholder="Internal note (not shown on live banner)" style="width:100%;max-width:100%;box-sizing:border-box;margin-top:4px;"></textarea>
+                                                    <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm" style="margin-top:6px;">Post comment</button>
+                                                </form>
+                                                <form method="post" class="nb-todo-ajax-form" enctype="multipart/form-data">
+                                                    <input type="hidden" name="nb_todo_action" value="todo_attachment_upload">
+                                                    <input type="hidden" name="todo_id" value="<?php echo (int)$tid; ?>">
+                                                    <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                    <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                    <label style="font-size:11px;font-weight:700;color:#64748b;">Attach file</label>
+                                                    <input type="file" name="todo_attachment_file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv" required style="margin-top:4px;font-size:12px;">
+                                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="margin-top:6px;">Upload</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </details>
                                 </div>
                             </div>
 
@@ -2291,6 +2382,8 @@ try {
                             $su_urg = (isset($sub['urgency']) && in_array($sub['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $sub['urgency'] : 'normal';
                             $su_pc = $priorityConfig[$su_urg] ?? $priorityConfig['normal'];
                             $su_sel = array_map('intval', $sub['assigned_admins'] ?? []);
+                            $sub_timeline = function_exists('noticebanner_get_todo_timeline') ? noticebanner_get_todo_timeline($sid) : [];
+                            $sub_attachments = function_exists('noticebanner_get_todo_attachments_list') ? noticebanner_get_todo_attachments_list($sid) : [];
                             ?>
                             <div class="nb-todo-flat-row nb-todo-flat-sub">
                                 <form method="post" class="nb-todo-flat-toggle nb-todo-ajax-form">
@@ -2390,6 +2483,70 @@ try {
                                             <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete</button>
                                         </form>
                                     </div>
+                                    <details class="nb-todo-activity-fold">
+                                        <summary>Activity &amp; files</summary>
+                                        <div class="nb-todo-activity-body">
+                                            <ul class="nb-todo-timeline" id="nb-tl-sub-<?php echo (int)$sid; ?>">
+                                                <?php foreach ($sub_timeline as $ev): ?>
+                                                <li class="nb-todo-tl-i nb-todo-tl-<?php echo htmlspecialchars($ev['kind'] ?? 'history', ENT_QUOTES, 'UTF-8'); ?><?php echo ($ev['kind'] ?? '') === 'comment' ? ' nb-todo-tl-comment' : ''; ?>"<?php echo (($ev['kind'] ?? '') === 'comment') ? ' data-nb-comment-id="' . (int)($ev['id'] ?? 0) . '"' : ''; ?>>
+                                                    <span class="nb-todo-tl-meta"><?php echo htmlspecialchars(date('M j, Y g:ia', strtotime($ev['created_at'] ?? 'now'))); ?> · <?php echo htmlspecialchars($ev['admin_name'] ?? ''); ?></span>
+                                                    <?php if (($ev['kind'] ?? '') === 'comment'): ?>
+                                                    <div class="nb-todo-tl-body"><?php echo nl2br(htmlspecialchars((string)($ev['body'] ?? ''), ENT_QUOTES, 'UTF-8')); ?></div>
+                                                    <?php if (!empty($currentAdminId) && (int)($ev['admin_id'] ?? 0) === (int)$currentAdminId): ?>
+                                                    <form method="post" class="nb-todo-ajax-form" style="display:inline;margin-top:6px;" onsubmit="return confirm('Delete this comment?');">
+                                                        <input type="hidden" name="nb_todo_action" value="todo_comment_delete">
+                                                        <input type="hidden" name="todo_id" value="<?php echo (int)$sid; ?>">
+                                                        <input type="hidden" name="todo_comment_id" value="<?php echo (int)($ev['id'] ?? 0); ?>">
+                                                        <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                        <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="padding:2px 8px;font-size:11px;">Remove</button>
+                                                    </form>
+                                                    <?php endif; ?>
+                                                    <?php else: ?>
+                                                    <div class="nb-todo-tl-summary"><?php echo htmlspecialchars((string)($ev['summary'] ?? ''), ENT_QUOTES, 'UTF-8'); ?></div>
+                                                    <?php endif; ?>
+                                                </li>
+                                                <?php endforeach; ?>
+                                            </ul>
+                                            <div id="nb-fl-sub-<?php echo (int)$sid; ?>">
+                                                <?php foreach ($sub_attachments as $att): ?>
+                                                <div class="nb-todo-file-row" data-nb-att-id="<?php echo (int)($att['id'] ?? 0); ?>">
+                                                    <a href="addonmodules.php?module=noticebanner&amp;nb_todo_attachment=<?php echo (int)($att['id'] ?? 0); ?>"><?php echo htmlspecialchars($att['original_filename'] ?? 'file'); ?></a>
+                                                    <span style="color:#94a3b8;"><?php echo (int)($att['size'] ?? 0) > 0 ? number_format((int)$att['size'] / 1024, 1) . ' KB' : ''; ?></span>
+                                                    <span style="color:#94a3b8;"><?php echo htmlspecialchars($att['admin_name'] ?? ''); ?></span>
+                                                    <form method="post" class="nb-todo-ajax-form" style="display:inline;margin-left:auto;" onsubmit="return confirm('Delete this file?');">
+                                                        <input type="hidden" name="nb_todo_action" value="todo_attachment_delete">
+                                                        <input type="hidden" name="todo_id" value="<?php echo (int)$sid; ?>">
+                                                        <input type="hidden" name="todo_attachment_id" value="<?php echo (int)($att['id'] ?? 0); ?>">
+                                                        <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                        <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="padding:2px 8px;font-size:11px;">Delete</button>
+                                                    </form>
+                                                </div>
+                                                <?php endforeach; ?>
+                                            </div>
+                                            <div class="nb-todo-comment-tools">
+                                                <form method="post" class="nb-todo-ajax-form nb-todo-comment-form">
+                                                    <input type="hidden" name="nb_todo_action" value="todo_comment_add">
+                                                    <input type="hidden" name="todo_id" value="<?php echo (int)$sid; ?>">
+                                                    <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                    <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                    <label style="font-size:11px;font-weight:700;color:#64748b;">Add comment</label>
+                                                    <textarea name="todo_comment_body" rows="2" placeholder="Internal note (not shown on live banner)" style="width:100%;max-width:100%;box-sizing:border-box;margin-top:4px;"></textarea>
+                                                    <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm" style="margin-top:6px;">Post comment</button>
+                                                </form>
+                                                <form method="post" class="nb-todo-ajax-form" enctype="multipart/form-data">
+                                                    <input type="hidden" name="nb_todo_action" value="todo_attachment_upload">
+                                                    <input type="hidden" name="todo_id" value="<?php echo (int)$sid; ?>">
+                                                    <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                    <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                    <label style="font-size:11px;font-weight:700;color:#64748b;">Attach file</label>
+                                                    <input type="file" name="todo_attachment_file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.txt,.csv" required style="margin-top:4px;font-size:12px;">
+                                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="margin-top:6px;">Upload</button>
+                                                </form>
+                                            </div>
+                                        </div>
+                                    </details>
                                 </div>
                             </div>
                             <?php endforeach; ?>
@@ -2423,8 +2580,10 @@ try {
     </div>
 </div>
 </div><!-- /nb-pane-todo-banners -->
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
 <script>
 (function(){
+var nbTodoBannerRange = <?php echo json_encode($todoBannerRange ?? '3m'); ?>;
 function nbTodoPaneToast(msg){
 var host = document.getElementById('nb-todo-toast-host');
 if(!host){
@@ -2460,6 +2619,67 @@ fetch(url, { method:'POST', body:fd, credentials:'same-origin', headers:{'X-Requ
 .then(function(r){ return r.json(); })
 .then(function(d){
 if(!d || !d.ok){ alert((d&&d.message)||'Request failed'); return; }
+if(act === 'todo_comment_add' && d.comment){
+var ul = form.closest('.nb-todo-activity-body');
+ul = ul ? ul.querySelector('.nb-todo-timeline') : null;
+if(ul){
+var li = document.createElement('li');
+li.className = 'nb-todo-tl-i nb-todo-tl-comment';
+li.setAttribute('data-nb-comment-id', String(d.comment.id));
+li.innerHTML = '<span class="nb-todo-tl-meta"></span><div class="nb-todo-tl-body"></div>';
+li.querySelector('.nb-todo-tl-meta').textContent = (d.comment.created_at||'') + ' · ' + (d.comment.admin_name||'');
+li.querySelector('.nb-todo-tl-body').textContent = d.comment.body || '';
+ul.appendChild(li);
+}
+var ta = form.querySelector('[name="todo_comment_body"]');
+if(ta) ta.value = '';
+nbTodoPaneToast('Comment posted');
+return;
+}
+if(act === 'todo_comment_delete'){
+var li = form.closest('li');
+if(li && li.parentNode) li.parentNode.removeChild(li);
+nbTodoPaneToast('Comment removed');
+return;
+}
+if(act === 'todo_attachment_upload' && d.attachment){
+var ab = form.closest('.nb-todo-activity-body');
+var host = ab ? ab.querySelector('[id^="nb-fl"]') : null;
+if(host && d.attachment.id){
+var row = document.createElement('div');
+row.className = 'nb-todo-file-row';
+row.setAttribute('data-nb-att-id', String(d.attachment.id));
+var href = 'addonmodules.php?module=noticebanner&nb_todo_attachment=' + encodeURIComponent(String(d.attachment.id));
+var a = document.createElement('a');
+a.href = href;
+a.textContent = d.attachment.original_filename || 'file';
+var sp1 = document.createElement('span');
+sp1.style.color = '#94a3b8';
+sp1.textContent = d.attachment.size ? (Math.round(d.attachment.size/1024*10)/10) + ' KB' : '';
+var sp2 = document.createElement('span');
+sp2.style.color = '#94a3b8';
+sp2.textContent = d.attachment.admin_name || '';
+var del = document.createElement('form');
+del.method = 'post';
+del.className = 'nb-todo-ajax-form';
+del.style.cssText = 'display:inline;margin-left:auto;';
+del.innerHTML = '<input type="hidden" name="nb_todo_action" value="todo_attachment_delete"><input type="hidden" name="todo_id" value="'+ String(fd.get('todo_id')||'') +'"><input type="hidden" name="todo_attachment_id" value="'+ String(d.attachment.id) +'"><input type="hidden" name="todo_redirect_notice_id" value="'+ String(fd.get('todo_redirect_notice_id')||'') +'"><input type="hidden" name="todo_banner_range" value="'+ String(fd.get('todo_banner_range')||'') +'"><button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="padding:2px 8px;font-size:11px;">Delete</button>';
+row.appendChild(a);
+row.appendChild(sp1);
+row.appendChild(sp2);
+row.appendChild(del);
+host.appendChild(row);
+}
+try{ var fi = form.querySelector('input[type=file]'); if(fi) fi.value=''; }catch(_){}
+nbTodoPaneToast('File uploaded');
+return;
+}
+if(act === 'todo_attachment_delete'){
+var row = form.closest('.nb-todo-file-row');
+if(row && row.parentNode) row.parentNode.removeChild(row);
+nbTodoPaneToast('Attachment removed');
+return;
+}
 if(typeof d.parent_open === 'number' && typeof d.parent_done === 'number'){
 var el = document.getElementById('nb-todo-board-counts');
 if(el) el.textContent = d.parent_open + ' open · ' + d.parent_done + ' done';
@@ -2548,6 +2768,46 @@ return;
 })
 .catch(function(){ alert('Network error'); });
 });
+if(typeof Sortable !== 'undefined'){
+document.querySelectorAll('.nb-todo-kanban-track').forEach(function(track){
+Sortable.create(track, {
+group: 'nbkanban',
+animation: 150,
+draggable: '.nb-todo-card-v2',
+onEnd: function(evt){
+var item = evt.item;
+var todoId = item.getAttribute('data-nb-todo-id');
+var newCol = evt.to.getAttribute('data-nb-kanban-col');
+if(!todoId || !newCol) return;
+if(evt.from === evt.to && evt.oldIndex === evt.newIndex) return;
+if(evt.from === evt.to){
+var ch = evt.from.children[evt.oldIndex];
+if(ch){ evt.from.insertBefore(item, ch); }
+else { evt.from.appendChild(item); }
+return;
+}
+var fd = new FormData();
+fd.append('nb_todo_ajax','1');
+fd.append('nb_todo_action','kanban_move');
+fd.append('todo_id', todoId);
+fd.append('target_col', newCol);
+fd.append('todo_banner_range', nbTodoBannerRange);
+var reqUrl = window.location.pathname + window.location.search;
+fetch(reqUrl, { method:'POST', body:fd, credentials:'same-origin', headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json'}})
+.then(function(r){ return r.json(); })
+.then(function(d){
+if(!d || !d.ok){
+alert((d&&d.message)||'Could not move card');
+window.location.reload();
+return;
+}
+nbTodoPaneToast('Moved to ' + newCol);
+})
+.catch(function(){ alert('Network error'); window.location.reload(); });
+}
+});
+});
+}
 })();
 </script>
 

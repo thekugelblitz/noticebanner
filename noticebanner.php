@@ -287,7 +287,33 @@ function noticebanner_ensure_columns() {
                 }
             });
         }
+
+        if (!$schema->hasTable('mod_noticebanner_todo_comments')) {
+            $schema->create('mod_noticebanner_todo_comments', function ($table) {
+                $table->increments('id');
+                $table->unsignedInteger('todo_id');
+                $table->unsignedInteger('admin_id');
+                $table->text('body');
+                $table->timestamps();
+                $table->index(['todo_id'], 'idx_nb_todo_comment_todo');
+            });
+        }
+
+        if (!$schema->hasTable('mod_noticebanner_todo_attachments')) {
+            $schema->create('mod_noticebanner_todo_attachments', function ($table) {
+                $table->increments('id');
+                $table->unsignedInteger('todo_id');
+                $table->unsignedInteger('admin_id');
+                $table->string('original_filename', 255);
+                $table->string('stored_name', 64);
+                $table->string('mime', 120)->default('application/octet-stream');
+                $table->unsignedInteger('size')->default(0);
+                $table->timestamp('created_at')->useCurrent();
+                $table->index(['todo_id'], 'idx_nb_todo_att_todo');
+            });
+        }
     } catch (\Exception $e) {}
+    noticebanner_todo_ensure_secure_storage();
 }
 }
 
@@ -914,6 +940,40 @@ function noticebanner_admin_todo_redirect_url(int $noticeId, string $range = '3m
 }
 }
 
+if (!function_exists('noticebanner_todo_attachments_dir')) {
+/**
+ * Per-task directory for uploaded files (not web-served directly).
+ */
+function noticebanner_todo_attachments_dir(int $todoId): string {
+    $base = rtrim(__DIR__, '/\\') . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'todo_attachments';
+    return $base . DIRECTORY_SEPARATOR . (string)max(0, $todoId);
+}
+}
+
+if (!function_exists('noticebanner_delete_todo_attachment_files')) {
+function noticebanner_delete_todo_attachment_files(int $todoId): void {
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner_todo_attachments')
+            ->where('todo_id', $todoId)
+            ->get(['stored_name'])
+            ->toArray();
+        $dir = noticebanner_todo_attachments_dir($todoId);
+        foreach ($rows as $r) {
+            $fn = is_object($r) ? (string)($r->stored_name ?? '') : (string)($r['stored_name'] ?? '');
+            if ($fn !== '' && noticebanner_todo_attachment_stored_name_valid($fn)) {
+                $path = $dir . DIRECTORY_SEPARATOR . $fn;
+                if (is_file($path)) {
+                    @unlink($path);
+                }
+            }
+        }
+        if (is_dir($dir)) {
+            @rmdir($dir);
+        }
+    } catch (\Exception $e) {}
+}
+}
+
 if (!function_exists('noticebanner_delete_todo_recursive')) {
 function noticebanner_delete_todo_recursive(int $todoId): void {
     try {
@@ -923,6 +983,9 @@ function noticebanner_delete_todo_recursive(int $todoId): void {
         foreach ($children as $childId) {
             noticebanner_delete_todo_recursive((int)$childId);
         }
+        noticebanner_delete_todo_attachment_files($todoId);
+        \WHMCS\Database\Capsule::table('mod_noticebanner_todo_attachments')->where('todo_id', $todoId)->delete();
+        \WHMCS\Database\Capsule::table('mod_noticebanner_todo_comments')->where('todo_id', $todoId)->delete();
         \WHMCS\Database\Capsule::table('mod_noticebanner_todo_history')->where('todo_id', $todoId)->delete();
         \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->delete();
     } catch (\Exception $e) {}
@@ -1562,6 +1625,515 @@ function noticebanner_sync_todo_banner_content(int $noticeId): void {
 }
 }
 
+if (!function_exists('noticebanner_todo_attachment_mime_whitelist')) {
+/**
+ * Allowed upload extensions (client-declared) → canonical Content-Type for DB / download.
+ * ZIP and other archives are excluded — they can mask executable payloads.
+ *
+ * @return array<string,string> extension => mime
+ */
+function noticebanner_todo_attachment_mime_whitelist(): array {
+    return [
+        'pdf'  => 'application/pdf',
+        'png'  => 'image/png',
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'gif'  => 'image/gif',
+        'webp' => 'image/webp',
+        'txt'  => 'text/plain',
+        'csv'  => 'text/csv',
+    ];
+}
+}
+
+if (!function_exists('noticebanner_todo_max_attachment_bytes')) {
+function noticebanner_todo_max_attachment_bytes(): int {
+    return 10 * 1024 * 1024;
+}
+}
+
+if (!function_exists('noticebanner_todo_attachment_stored_name_valid')) {
+/**
+ * Stored files are 32 hex chars (no extension). Legacy rows may use 32hex.ext.
+ */
+function noticebanner_todo_attachment_stored_name_valid(string $name): bool {
+    return $name !== '' && (bool)preg_match('/^[a-f0-9]{32}(\.[a-z0-9]{1,8})?$/i', $name);
+}
+}
+
+if (!function_exists('noticebanner_todo_storage_htaccess_contents')) {
+function noticebanner_todo_storage_htaccess_contents(): string {
+    return <<<'HTA'
+# Notice Banner — block all direct HTTP access; files are served only via addon download handler.
+# Also harden if this directory is ever mis-exposed.
+<IfModule mod_authz_core.c>
+  Require all denied
+</IfModule>
+<IfModule !mod_authz_core.c>
+  Order deny,allow
+  Deny from all
+</IfModule>
+HTA;
+}
+}
+
+if (!function_exists('noticebanner_todo_storage_webconfig_contents')) {
+function noticebanner_todo_storage_webconfig_contents(): string {
+    return <<<'XML'
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <system.webServer>
+    <authorization>
+      <deny users="*" />
+    </authorization>
+  </system.webServer>
+</configuration>
+XML;
+}
+}
+
+if (!function_exists('noticebanner_todo_ensure_secure_storage')) {
+/**
+ * Create storage dirs and drop server rules so nothing under storage/ is directly executable or browsable.
+ */
+function noticebanner_todo_ensure_secure_storage(): void {
+    $base = rtrim(__DIR__, '/\\') . DIRECTORY_SEPARATOR . 'storage';
+    $sub = $base . DIRECTORY_SEPARATOR . 'todo_attachments';
+    foreach ([$base, $sub] as $d) {
+        if (!is_dir($d)) {
+            @mkdir($d, 0750, true);
+        }
+    }
+    $hta = $base . DIRECTORY_SEPARATOR . '.htaccess';
+    if (!is_file($hta)) {
+        @file_put_contents($hta, noticebanner_todo_storage_htaccess_contents());
+    }
+    $wcf = $base . DIRECTORY_SEPARATOR . 'web.config';
+    if (!is_file($wcf)) {
+        @file_put_contents($wcf, noticebanner_todo_storage_webconfig_contents());
+    }
+}
+}
+
+if (!function_exists('noticebanner_validate_todo_attachment_file')) {
+/**
+ * Validate uploaded temp file content vs declared extension. Throws RuntimeException if unsafe.
+ * Uses magic bytes, finfo, and type-specific checks (e.g. getimagesize for raster images).
+ *
+ * @return string Canonical MIME for storage
+ */
+function noticebanner_validate_todo_attachment_file(string $tmpPath, string $ext): string {
+    if ($tmpPath === '' || !is_uploaded_file($tmpPath)) {
+        throw new \RuntimeException('Invalid upload');
+    }
+    $size = @filesize($tmpPath);
+    if ($size === false || $size <= 0) {
+        throw new \RuntimeException('Empty file');
+    }
+    $max = noticebanner_todo_max_attachment_bytes();
+    if ($size > $max) {
+        throw new \RuntimeException('File too large');
+    }
+
+    $ext = strtolower($ext);
+    $whitelist = noticebanner_todo_attachment_mime_whitelist();
+    if (!isset($whitelist[$ext])) {
+        throw new \RuntimeException('File type not allowed');
+    }
+
+    $fh = @fopen($tmpPath, 'rb');
+    if (!$fh) {
+        throw new \RuntimeException('Could not read upload');
+    }
+    $readLen = (int)min(65536, $size);
+    $head = fread($fh, $readLen);
+    fclose($fh);
+    if ($head === false || $head === '') {
+        throw new \RuntimeException('Could not read upload');
+    }
+
+    // Block obvious executables / ELF / PE regardless of claimed extension
+    if (strncmp($head, "MZ", 2) === 0 || strncmp($head, "\x7fELF", 4) === 0) {
+        throw new \RuntimeException('Executable files are not allowed');
+    }
+
+    $finfoMime = null;
+    if (class_exists('finfo')) {
+        $fi = new \finfo(FILEINFO_MIME_TYPE);
+        $finfoMime = $fi->file($tmpPath);
+    }
+
+    $canonical = $whitelist[$ext];
+
+    switch ($ext) {
+        case 'pdf':
+            if (strncmp($head, '%PDF', 4) !== 0) {
+                throw new \RuntimeException('Not a valid PDF');
+            }
+            if ($finfoMime !== null && !in_array($finfoMime, ['application/pdf', 'application/x-pdf'], true)) {
+                throw new \RuntimeException('PDF content verification failed');
+            }
+            return 'application/pdf';
+
+        case 'png':
+            if (strncmp($head, "\x89PNG\r\n\x1a\n", 8) !== 0) {
+                throw new \RuntimeException('Not a valid PNG');
+            }
+            $info = @getimagesize($tmpPath);
+            if ($info === false || (int)($info[2] ?? 0) !== IMAGETYPE_PNG) {
+                throw new \RuntimeException('PNG image verification failed');
+            }
+            if ($finfoMime !== null && strpos((string)$finfoMime, 'image/') !== 0) {
+                throw new \RuntimeException('PNG MIME mismatch');
+            }
+            return 'image/png';
+
+        case 'jpg':
+        case 'jpeg':
+            if (strncmp($head, "\xFF\xD8\xFF", 3) !== 0) {
+                throw new \RuntimeException('Not a valid JPEG');
+            }
+            $info = @getimagesize($tmpPath);
+            if ($info === false || (int)($info[2] ?? 0) !== IMAGETYPE_JPEG) {
+                throw new \RuntimeException('JPEG image verification failed');
+            }
+            if ($finfoMime !== null && !in_array($finfoMime, ['image/jpeg', 'image/jpg', 'image/pjpeg'], true)) {
+                throw new \RuntimeException('JPEG MIME mismatch');
+            }
+            return 'image/jpeg';
+
+        case 'gif':
+            if (strncmp($head, 'GIF87a', 6) !== 0 && strncmp($head, 'GIF89a', 6) !== 0) {
+                throw new \RuntimeException('Not a valid GIF');
+            }
+            $info = @getimagesize($tmpPath);
+            if ($info === false || (int)($info[2] ?? 0) !== IMAGETYPE_GIF) {
+                throw new \RuntimeException('GIF image verification failed');
+            }
+            if ($finfoMime !== null && strpos((string)$finfoMime, 'image/') !== 0) {
+                throw new \RuntimeException('GIF MIME mismatch');
+            }
+            return 'image/gif';
+
+        case 'webp':
+            if (strlen($head) < 12 || strncmp(substr($head, 0, 4), 'RIFF', 4) !== 0 || substr($head, 8, 4) !== 'WEBP') {
+                throw new \RuntimeException('Not a valid WebP');
+            }
+            if (defined('IMAGETYPE_WEBP')) {
+                $info = @getimagesize($tmpPath);
+                if ($info === false || (int)($info[2] ?? 0) !== IMAGETYPE_WEBP) {
+                    throw new \RuntimeException('WebP image verification failed');
+                }
+            }
+            if ($finfoMime !== null && strpos((string)$finfoMime, 'image/') !== 0 && $finfoMime !== 'application/octet-stream') {
+                throw new \RuntimeException('WebP MIME mismatch');
+            }
+            return 'image/webp';
+
+        case 'txt':
+        case 'csv':
+            if (strpos($head, "\x00") !== false) {
+                throw new \RuntimeException('Binary content not allowed in text uploads');
+            }
+            if (preg_match('/<\?php/i', $head) || preg_match('/<\?(?:php|=)/i', $head)) {
+                throw new \RuntimeException('Disallowed content in text file');
+            }
+            if (preg_match('/^\s*#!/', $head)) {
+                throw new \RuntimeException('Script-like content not allowed');
+            }
+            if (preg_match('/^\s*<\!DOCTYPE\s+html/i', $head) || preg_match('/^\s*<html[\s>]/i', $head)) {
+                throw new \RuntimeException('HTML uploads are not allowed as text');
+            }
+            // Reject obvious polyglot tricks
+            if (strncmp($head, '%PDF', 4) === 0 || strncmp($head, "\x89PNG", 4) === 0 || strncmp($head, "\xFF\xD8\xFF", 3) === 0) {
+                throw new \RuntimeException('File content does not match text type');
+            }
+            if ($finfoMime !== null) {
+                $okTxt = in_array($finfoMime, [
+                    'text/plain', 'text/csv', 'application/csv', 'text/x-csv',
+                    'application/vnd.ms-excel', 'text/comma-separated-values',
+                ], true);
+                if ($ext === 'csv' && !$okTxt && strpos($finfoMime, 'text/') !== 0) {
+                    throw new \RuntimeException('CSV content verification failed');
+                }
+                if ($ext === 'txt' && !$okTxt && !in_array($finfoMime, ['application/x-empty', 'inode/x-empty'], true) && strpos($finfoMime, 'text/') !== 0) {
+                    throw new \RuntimeException('Text file verification failed');
+                }
+            }
+            return $canonical;
+
+        default:
+            throw new \RuntimeException('Unsupported type');
+    }
+}
+}
+
+if (!function_exists('noticebanner_decode_json_or_raw')) {
+function noticebanner_decode_json_or_raw(?string $s) {
+    if ($s === null || $s === '') {
+        return null;
+    }
+    $j = json_decode($s, true);
+    return $j !== null ? $j : $s;
+}
+}
+
+if (!function_exists('noticebanner_format_todo_history_summary')) {
+function noticebanner_format_todo_history_summary(string $action, $oldV, $newV): string {
+    $oldV = noticebanner_decode_json_or_raw(is_string($oldV) ? $oldV : json_encode($oldV));
+    $newV = noticebanner_decode_json_or_raw(is_string($newV) ? $newV : json_encode($newV));
+    switch ($action) {
+        case 'created':
+        case 'subtask_created':
+            return 'Task created' . (is_array($newV) && isset($newV['title']) ? ': ' . $newV['title'] : '');
+        case 'checked':
+            return 'Marked complete';
+        case 'unchecked':
+            return 'Marked incomplete';
+        case 'row_saved':
+            return 'Task updated';
+        case 'duedate_changed':
+            $o = is_array($oldV) ? ($oldV['due_at'] ?? '') : '';
+            $n = is_array($newV) ? ($newV['due_at'] ?? '') : '';
+            return 'Due date changed' . ($o !== $n ? ' (' . ($n !== '' && $n !== null ? date('M j, Y g:ia', strtotime((string)$n)) : 'cleared') . ')' : '');
+        case 'remarked':
+            return 'Banner note / remarks updated';
+        case 'deleted':
+            return 'Task deleted';
+        case 'reordered':
+            return 'Order changed';
+        case 'kanban_moved':
+            return 'Moved on Kanban board';
+        case 'comment_added':
+            return 'Comment added';
+        case 'auto_checked_by_subtasks':
+            return 'Auto-completed (subtasks)';
+        case 'auto_unchecked_by_subtasks':
+            return 'Reopened (subtasks)';
+        default:
+            return $action;
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_todo_timeline')) {
+/**
+ * Merged activity for one task (history + comments), oldest first.
+ *
+ * @return list<array<string,mixed>>
+ */
+function noticebanner_get_todo_timeline(int $todoId): array {
+    if ($todoId <= 0) {
+        return [];
+    }
+    try {
+        $hist = \WHMCS\Database\Capsule::table('mod_noticebanner_todo_history')
+            ->where('todo_id', $todoId)
+            ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc')
+            ->get()
+            ->toArray();
+        $comments = \WHMCS\Database\Capsule::table('mod_noticebanner_todo_comments')
+            ->where('todo_id', $todoId)
+            ->orderBy('created_at', 'asc')
+            ->orderBy('id', 'asc')
+            ->get()
+            ->toArray();
+        $adminIds = [];
+        foreach ($hist as $h) {
+            $h = (array)$h;
+            if (!empty($h['admin_id'])) {
+                $adminIds[] = (int)$h['admin_id'];
+            }
+        }
+        foreach ($comments as $c) {
+            $c = (array)$c;
+            if (!empty($c['admin_id'])) {
+                $adminIds[] = (int)$c['admin_id'];
+            }
+        }
+        $adminIds = array_values(array_unique(array_filter($adminIds)));
+        $nameMap = $adminIds !== [] ? noticebanner_get_admin_name_map($adminIds) : [];
+        $out = [];
+        foreach ($hist as $h) {
+            $h = (array)$h;
+            $aid = (int)($h['admin_id'] ?? 0);
+            $out[] = [
+                'kind'       => 'history',
+                'id'         => (int)$h['id'],
+                'created_at' => (string)($h['created_at'] ?? ''),
+                'admin_id'   => $aid,
+                'admin_name' => $aid > 0 ? ($nameMap[$aid] ?? ('Admin #' . $aid)) : 'System',
+                'action'     => (string)($h['action'] ?? ''),
+                'summary'    => noticebanner_format_todo_history_summary(
+                    (string)($h['action'] ?? ''),
+                    $h['old_value'] ?? null,
+                    $h['new_value'] ?? null
+                ),
+            ];
+        }
+        foreach ($comments as $c) {
+            $c = (array)$c;
+            $aid = (int)($c['admin_id'] ?? 0);
+            $out[] = [
+                'kind'       => 'comment',
+                'id'         => (int)$c['id'],
+                'created_at' => (string)($c['created_at'] ?? ''),
+                'admin_id'   => $aid,
+                'admin_name' => $aid > 0 ? ($nameMap[$aid] ?? ('Admin #' . $aid)) : '',
+                'body'       => (string)($c['body'] ?? ''),
+            ];
+        }
+        usort($out, static function ($a, $b) {
+            $ta = strtotime($a['created_at'] ?? '') ?: 0;
+            $tb = strtotime($b['created_at'] ?? '') ?: 0;
+            if ($ta === $tb) {
+                return ($a['id'] ?? 0) <=> ($b['id'] ?? 0);
+            }
+            return $ta <=> $tb;
+        });
+        return $out;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_get_todo_attachments_list')) {
+/**
+ * @return list<array<string,mixed>>
+ */
+function noticebanner_get_todo_attachments_list(int $todoId): array {
+    if ($todoId <= 0) {
+        return [];
+    }
+    try {
+        $rows = \WHMCS\Database\Capsule::table('mod_noticebanner_todo_attachments')
+            ->where('todo_id', $todoId)
+            ->orderBy('created_at', 'asc')
+            ->get()
+            ->toArray();
+        $ids = [];
+        foreach ($rows as $r) {
+            $r = (array)$r;
+            if (!empty($r['admin_id'])) {
+                $ids[] = (int)$r['admin_id'];
+            }
+        }
+        $names = $ids !== [] ? noticebanner_get_admin_name_map($ids) : [];
+        $out = [];
+        foreach ($rows as $r) {
+            $r = (array)$r;
+            $aid = (int)($r['admin_id'] ?? 0);
+            $out[] = [
+                'id'                => (int)$r['id'],
+                'original_filename' => (string)($r['original_filename'] ?? ''),
+                'mime'              => (string)($r['mime'] ?? ''),
+                'size'              => (int)($r['size'] ?? 0),
+                'created_at'        => (string)($r['created_at'] ?? ''),
+                'admin_name'        => $aid > 0 ? ($names[$aid] ?? ('Admin #' . $aid)) : '',
+            ];
+        }
+        return $out;
+    } catch (\Exception $e) {
+        return [];
+    }
+}
+}
+
+if (!function_exists('noticebanner_kanban_build_update_for_column')) {
+/**
+ * Server TZ: derive due_at / completion so noticebanner_todo_kanban_column matches $targetCol.
+ *
+ * @return array<string,mixed>
+ */
+function noticebanner_kanban_build_update_for_column(string $targetCol, int $adminId): array {
+    $targetCol = strtolower(trim($targetCol));
+    $now = date('Y-m-d H:i:s');
+    if ($targetCol === 'done') {
+        return [
+            'is_completed'          => 1,
+            'completed_at'          => $now,
+            'completed_by_admin_id' => $adminId > 0 ? $adminId : null,
+        ];
+    }
+    $base = [
+        'is_completed'           => 0,
+        'completed_at'           => null,
+        'completed_by_admin_id'  => null,
+    ];
+    if ($targetCol === 'backlog') {
+        return array_merge($base, ['due_at' => null]);
+    }
+    if ($targetCol === 'today') {
+        return array_merge($base, ['due_at' => date('Y-m-d') . ' 23:59:59']);
+    }
+    if ($targetCol === 'overdue') {
+        return array_merge($base, ['due_at' => date('Y-m-d H:i:s', strtotime('yesterday 18:00:00'))]);
+    }
+    if ($targetCol === 'upcoming') {
+        return array_merge($base, ['due_at' => date('Y-m-d 23:59:59', strtotime('+7 days'))]);
+    }
+    throw new \InvalidArgumentException('Invalid Kanban column');
+}
+}
+
+if (!function_exists('noticebanner_run_todos_csv_export')) {
+function noticebanner_run_todos_csv_export(int $adminId, array $kanbanFilters): void {
+    if ($adminId <= 0) {
+        header('HTTP/1.1 403 Forbidden');
+        echo 'Forbidden';
+        exit;
+    }
+    $rows = noticebanner_filter_todo_flat_rows_for_admin(
+        noticebanner_get_todos_flat($kanbanFilters),
+        $adminId
+    );
+    $nids = array_unique(array_map(static fn($r) => (int)$r['notice_id'], $rows));
+    $titles = noticebanner_get_notice_title_map(array_values($nids));
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="noticebanner-todos-' . date('Y-m-d-His') . '.csv"');
+    echo "\xEF\xBB\xBF";
+    $out = fopen('php://output', 'w');
+    fputcsv($out, [
+        'id', 'notice_id', 'board_title', 'parent_todo_id', 'title', 'is_completed',
+        'due_at', 'urgency', 'assigned_names', 'tags', 'remarks', 'created_at', 'completed_at', 'kanban_col',
+    ]);
+    foreach ($rows as $r) {
+        $nid = (int)$r['notice_id'];
+        $assignIds = $r['assigned_admins'] ?? [];
+        if (!is_array($assignIds)) {
+            $assignIds = [];
+        }
+        $labels = [];
+        if ($assignIds !== []) {
+            $am = noticebanner_get_admin_name_map($assignIds);
+            foreach ($assignIds as $aid) {
+                $labels[] = $am[(int)$aid] ?? ('#' . (int)$aid);
+            }
+        }
+        fputcsv($out, [
+            (int)$r['id'],
+            $nid,
+            $titles[$nid] ?? ('Board #' . $nid),
+            $r['parent_todo_id'] ?? '',
+            $r['title'] ?? '',
+            !empty($r['is_completed']) ? 1 : 0,
+            $r['due_at'] ?? '',
+            $r['urgency'] ?? 'normal',
+            implode('; ', $labels),
+            $r['tags'] ?? '',
+            $r['remarks'] ?? '',
+            $r['created_at'] ?? '',
+            $r['completed_at'] ?? '',
+            $r['kanban_col'] ?? noticebanner_todo_kanban_column($r),
+        ]);
+    }
+    fclose($out);
+    exit;
+}
+}
+
 // ─── Admin Output ────────────────────────────────────────────────────────────
 
 if (!function_exists('noticebanner_output')) {
@@ -1570,6 +2142,73 @@ function noticebanner_output($vars) {
     noticebanner_ensure_columns();
 
     $licenseDiagnosticsOutput = '';
+
+    $currentAdminOut = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : 0;
+
+    // ── To-Do CSV export (same filters as Kanban toolbar) ──
+    if (!empty($_GET['nb_todo_export']) && $_GET['nb_todo_export'] === 'csv' && $currentAdminOut > 0) {
+        $todoBannerRange = trim((string)($_GET['todo_banner_range'] ?? '3m'));
+        $kanbanRange = in_array($todoBannerRange, ['3m', '6m', 'all'], true) ? $todoBannerRange : '3m';
+        $todoKanbanQ = trim((string)($_GET['todo_kanban_q'] ?? ''));
+        $kanbanFilters = [
+            'status' => 'all',
+            'only_todo_banners' => true,
+            'created_range' => $kanbanRange,
+        ];
+        if ($todoKanbanQ !== '') {
+            $kanbanFilters['search'] = $todoKanbanQ;
+        }
+        noticebanner_run_todos_csv_export($currentAdminOut, $kanbanFilters);
+    }
+
+    // ── Task attachment download (session + permission) ──
+    if (!empty($_GET['nb_todo_attachment'])) {
+        $attId = (int)$_GET['nb_todo_attachment'];
+        if ($attId <= 0 || $currentAdminOut <= 0) {
+            header('HTTP/1.1 403 Forbidden');
+            exit('Forbidden');
+        }
+        try {
+            $att = \WHMCS\Database\Capsule::table('mod_noticebanner_todo_attachments')->where('id', $attId)->first();
+            if (!$att) {
+                header('HTTP/1.1 404 Not Found');
+                exit('Not found');
+            }
+            $todoId = (int)$att->todo_id;
+            $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+            if (!$row) {
+                header('HTTP/1.1 404 Not Found');
+                exit('Not found');
+            }
+            $nNotice = \WHMCS\Database\Capsule::table('mod_noticebanner')
+                ->where('id', (int)$row->notice_id)->where('is_todo_banner', 1)->first();
+            if (!$nNotice || !noticebanner_admin_can_view_todo($currentAdminOut, $row, $nNotice)) {
+                header('HTTP/1.1 403 Forbidden');
+                exit('Forbidden');
+            }
+            $stored = (string)$att->stored_name;
+            if (!noticebanner_todo_attachment_stored_name_valid($stored)) {
+                header('HTTP/1.1 400 Bad Request');
+                exit('Invalid file');
+            }
+            $path = noticebanner_todo_attachments_dir($todoId) . DIRECTORY_SEPARATOR . $stored;
+            if (!is_file($path) || !is_readable($path)) {
+                header('HTTP/1.1 404 Not Found');
+                exit('File missing');
+            }
+            $mime = (string)($att->mime ?: 'application/octet-stream');
+            $fn = (string)($att->original_filename ?: 'download');
+            header('Content-Type: ' . $mime);
+            header('Content-Length: ' . (string)filesize($path));
+            header('Content-Disposition: attachment; filename="' . str_replace(['"', "\r", "\n"], '', $fn) . '"');
+            header('X-Content-Type-Options: nosniff');
+            readfile($path);
+            exit;
+        } catch (\Throwable $e) {
+            header('HTTP/1.1 500 Internal Server Error');
+            exit;
+        }
+    }
 
     // ── Export poll votes: ?nb_export_votes=<id>&format=csv|json (Pro) ──
     if (!empty($_GET['nb_export_votes'])) {
@@ -2008,6 +2647,223 @@ function noticebanner_output($vars) {
                     noticebanner_sync_todo_banner_content((int)$row->notice_id);
                     $rbNoticeId = (int)$row->notice_id;
                     $resp = ['ok' => true, 'message' => 'Task reordered'];
+                } elseif ($action === 'todo_comment_add') {
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $body = trim((string)($_POST['todo_comment_body'] ?? ''));
+                    if ($todoId <= 0 || $body === '') {
+                        throw new \RuntimeException('Comment text required');
+                    }
+                    if (mb_strlen($body) > 8000) {
+                        throw new \RuntimeException('Comment too long');
+                    }
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) {
+                        throw new \RuntimeException('Task not found');
+                    }
+                    $nNotice = \WHMCS\Database\Capsule::table('mod_noticebanner')
+                        ->where('id', (int)$row->notice_id)->where('is_todo_banner', 1)->first();
+                    if (!$nNotice || !noticebanner_admin_can_edit_todo($adminId, $row, $nNotice)) {
+                        throw new \RuntimeException('Access denied');
+                    }
+                    $nowTs = date('Y-m-d H:i:s');
+                    $cid = (int)\WHMCS\Database\Capsule::table('mod_noticebanner_todo_comments')->insertGetId([
+                        'todo_id'    => $todoId,
+                        'admin_id'   => $adminId,
+                        'body'       => $body,
+                        'created_at' => $nowTs,
+                        'updated_at' => $nowTs,
+                    ]);
+                    $rbNoticeId = (int)$row->notice_id;
+                    $nm = noticebanner_get_admin_name_map([$adminId]);
+                    $resp = [
+                        'ok' => true,
+                        'message' => 'Comment added',
+                        'comment' => [
+                            'id' => $cid,
+                            'body' => $body,
+                            'admin_name' => $nm[$adminId] ?? ('Admin #' . $adminId),
+                            'created_at' => date('Y-m-d H:i:s'),
+                        ],
+                    ];
+                } elseif ($action === 'todo_comment_delete') {
+                    $commentId = (int)($_POST['todo_comment_id'] ?? 0);
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $c = \WHMCS\Database\Capsule::table('mod_noticebanner_todo_comments')
+                        ->where('id', $commentId)->where('todo_id', $todoId)->first();
+                    if (!$c) {
+                        throw new \RuntimeException('Comment not found');
+                    }
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) {
+                        throw new \RuntimeException('Task not found');
+                    }
+                    $nNotice = \WHMCS\Database\Capsule::table('mod_noticebanner')
+                        ->where('id', (int)$row->notice_id)->where('is_todo_banner', 1)->first();
+                    if (!$nNotice || !noticebanner_admin_can_edit_todo($adminId, $row, $nNotice)) {
+                        throw new \RuntimeException('Access denied');
+                    }
+                    if ((int)$c->admin_id !== $adminId) {
+                        throw new \RuntimeException('You can only delete your own comments');
+                    }
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todo_comments')->where('id', $commentId)->delete();
+                    $rbNoticeId = (int)$row->notice_id;
+                    $resp = ['ok' => true, 'message' => 'Comment removed'];
+                } elseif ($action === 'todo_attachment_upload') {
+                    noticebanner_todo_ensure_secure_storage();
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) {
+                        throw new \RuntimeException('Task not found');
+                    }
+                    $nNotice = \WHMCS\Database\Capsule::table('mod_noticebanner')
+                        ->where('id', (int)$row->notice_id)->where('is_todo_banner', 1)->first();
+                    if (!$nNotice || !noticebanner_admin_can_edit_todo($adminId, $row, $nNotice)) {
+                        throw new \RuntimeException('Access denied');
+                    }
+                    if (empty($_FILES['todo_attachment_file']['tmp_name']) || !is_uploaded_file($_FILES['todo_attachment_file']['tmp_name'])) {
+                        throw new \RuntimeException('No file uploaded');
+                    }
+                    $sz = (int)($_FILES['todo_attachment_file']['size'] ?? 0);
+                    if ($sz <= 0 || $sz > noticebanner_todo_max_attachment_bytes()) {
+                        throw new \RuntimeException('File too large (max 10 MB)');
+                    }
+                    $orig = (string)($_FILES['todo_attachment_file']['name'] ?? 'file');
+                    $orig = preg_replace('/[^a-zA-Z0-9._\-\s\(\)]/', '', basename($orig));
+                    if ($orig === '') {
+                        $orig = 'file';
+                    }
+                    $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+                    $whitelist = noticebanner_todo_attachment_mime_whitelist();
+                    if ($ext === '' || !isset($whitelist[$ext])) {
+                        throw new \RuntimeException('File type not allowed');
+                    }
+                    try {
+                        $mime = noticebanner_validate_todo_attachment_file((string)$_FILES['todo_attachment_file']['tmp_name'], $ext);
+                    } catch (\RuntimeException $e) {
+                        throw new \RuntimeException($e->getMessage() !== '' ? $e->getMessage() : 'File failed security validation');
+                    }
+                    $dir = noticebanner_todo_attachments_dir($todoId);
+                    if (!is_dir($dir)) {
+                        if (!@mkdir($dir, 0755, true) && !is_dir($dir)) {
+                            throw new \RuntimeException('Could not create storage directory');
+                        }
+                    }
+                    $stored = bin2hex(random_bytes(16));
+                    $dest = $dir . DIRECTORY_SEPARATOR . $stored;
+                    if (!@move_uploaded_file($_FILES['todo_attachment_file']['tmp_name'], $dest)) {
+                        throw new \RuntimeException('Could not save file');
+                    }
+                    @chmod($dest, 0644);
+                    $finalSize = (int)@filesize($dest);
+                    if ($finalSize <= 0) {
+                        @unlink($dest);
+                        throw new \RuntimeException('Could not save file');
+                    }
+                    $aid = (int)\WHMCS\Database\Capsule::table('mod_noticebanner_todo_attachments')->insertGetId([
+                        'todo_id'            => $todoId,
+                        'admin_id'           => $adminId,
+                        'original_filename'  => mb_substr($orig, 0, 250),
+                        'stored_name'        => $stored,
+                        'mime'               => $mime,
+                        'size'               => $finalSize,
+                        'created_at'         => date('Y-m-d H:i:s'),
+                    ]);
+                    $rbNoticeId = (int)$row->notice_id;
+                    $nm = noticebanner_get_admin_name_map([$adminId]);
+                    $resp = [
+                        'ok' => true,
+                        'message' => 'File uploaded',
+                        'attachment' => [
+                            'id' => $aid,
+                            'original_filename' => mb_substr($orig, 0, 250),
+                            'size' => $finalSize,
+                            'admin_name' => $nm[$adminId] ?? ('Admin #' . $adminId),
+                            'created_at' => date('Y-m-d H:i:s'),
+                        ],
+                    ];
+                } elseif ($action === 'todo_attachment_delete') {
+                    $attId = (int)($_POST['todo_attachment_id'] ?? 0);
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $att = \WHMCS\Database\Capsule::table('mod_noticebanner_todo_attachments')
+                        ->where('id', $attId)->where('todo_id', $todoId)->first();
+                    if (!$att) {
+                        throw new \RuntimeException('Attachment not found');
+                    }
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) {
+                        throw new \RuntimeException('Task not found');
+                    }
+                    $nNotice = \WHMCS\Database\Capsule::table('mod_noticebanner')
+                        ->where('id', (int)$row->notice_id)->where('is_todo_banner', 1)->first();
+                    if (!$nNotice || !noticebanner_admin_can_edit_todo($adminId, $row, $nNotice)) {
+                        throw new \RuntimeException('Access denied');
+                    }
+                    $stored = (string)$att->stored_name;
+                    if (!noticebanner_todo_attachment_stored_name_valid($stored)) {
+                        throw new \RuntimeException('Invalid attachment');
+                    }
+                    $path = noticebanner_todo_attachments_dir($todoId) . DIRECTORY_SEPARATOR . $stored;
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todo_attachments')->where('id', $attId)->delete();
+                    if (is_file($path)) {
+                        @unlink($path);
+                    }
+                    $rbNoticeId = (int)$row->notice_id;
+                    $resp = ['ok' => true, 'message' => 'Attachment removed'];
+                } elseif ($action === 'kanban_move') {
+                    $todoId = (int)($_POST['todo_id'] ?? 0);
+                    $targetCol = strtolower(trim((string)($_POST['target_col'] ?? '')));
+                    $allowed = ['overdue', 'today', 'upcoming', 'backlog', 'done'];
+                    if ($todoId <= 0 || !in_array($targetCol, $allowed, true)) {
+                        throw new \RuntimeException('Invalid move');
+                    }
+                    $row = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    if (!$row) {
+                        throw new \RuntimeException('Task not found');
+                    }
+                    $nNotice = \WHMCS\Database\Capsule::table('mod_noticebanner')
+                        ->where('id', (int)$row->notice_id)->where('is_todo_banner', 1)->first();
+                    if (!$nNotice || !noticebanner_admin_can_edit_todo($adminId, $row, $nNotice)) {
+                        throw new \RuntimeException('Access denied');
+                    }
+                    $prev = [
+                        'is_completed' => (int)$row->is_completed,
+                        'due_at' => $row->due_at,
+                        'completed_at' => $row->completed_at,
+                        'completed_by_admin_id' => $row->completed_by_admin_id,
+                    ];
+                    $updates = noticebanner_kanban_build_update_for_column($targetCol, $adminId);
+                    $updates['updated_at'] = date('Y-m-d H:i:s');
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->update($updates);
+                    $row2 = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->first();
+                    $r2 = (array)$row2;
+                    $r2['assigned_admins'] = json_decode($r2['assigned_admins'] ?? '[]', true) ?: [];
+                    $r2['is_completed'] = (int)$r2['is_completed'];
+                    $r2['status_bucket'] = noticebanner_todo_status_bucket($r2);
+                    $actualCol = noticebanner_todo_kanban_column($r2);
+                    if ($actualCol !== $targetCol) {
+                        \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('id', $todoId)->update([
+                            'is_completed' => $prev['is_completed'],
+                            'due_at' => $prev['due_at'],
+                            'completed_at' => $prev['completed_at'],
+                            'completed_by_admin_id' => $prev['completed_by_admin_id'],
+                            'updated_at' => date('Y-m-d H:i:s'),
+                        ]);
+                        throw new \RuntimeException('Could not place card in that column (reverted)');
+                    }
+                    noticebanner_todo_add_history($todoId, 'kanban_moved', $prev, ['target_col' => $targetCol, 'due_at' => $row2->due_at, 'is_completed' => (int)$row2->is_completed]);
+                    noticebanner_sync_todo_banner_content((int)$row->notice_id);
+                    if ((int)$row->notice_id !== (int)$row2->notice_id) {
+                        // no-op
+                    }
+                    $rbNoticeId = (int)$row->notice_id;
+                    $resp = [
+                        'ok' => true,
+                        'message' => 'Updated',
+                        'kanban_col' => $actualCol,
+                        'due_at' => $row2->due_at,
+                        'is_completed' => (int)$row2->is_completed,
+                        'todo_id' => $todoId,
+                    ];
                 }
             } catch (\Throwable $e) {
                 $resp = ['ok' => false, 'message' => $e->getMessage()];
@@ -2496,6 +3352,11 @@ function noticebanner_output($vars) {
                 $wasTodo = $row && !empty((int)$row->is_todo_banner);
                 $todoIds = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('notice_id', $id)->pluck('id')->toArray();
                 if (!empty($todoIds)) {
+                    foreach ($todoIds as $tid) {
+                        noticebanner_delete_todo_attachment_files((int)$tid);
+                    }
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todo_attachments')->whereIn('todo_id', $todoIds)->delete();
+                    \WHMCS\Database\Capsule::table('mod_noticebanner_todo_comments')->whereIn('todo_id', $todoIds)->delete();
                     \WHMCS\Database\Capsule::table('mod_noticebanner_todo_history')->whereIn('todo_id', $todoIds)->delete();
                     \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('notice_id', $id)->delete();
                 }
