@@ -131,6 +131,42 @@ $now = date('Y-m-d H:i:s');
 /* ── Admin chip ── */
 .nb-chip { display: inline-flex; align-items: center; gap: 4px; background: #ede9fe; color: #5b21b6; border-radius: 999px; padding: 2px 9px; font-size: 12px; font-weight: 600; margin: 2px; }
 
+/* ── To-Do workspace ── */
+.nb-todo-editor-hint { margin-top: 16px; padding: 12px 16px; border-radius: 10px; border: 1px solid #c7d2fe; background: linear-gradient(135deg, #f8fafc 0%, #eef2ff 100%); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: #475569; }
+.nb-todo-app { margin-top: 4px; }
+.nb-todo-toolbar { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.nb-todo-layout { display: grid; grid-template-columns: 260px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) {
+  .nb-todo-layout { grid-template-columns: 1fr; }
+}
+.nb-todo-side { border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+.nb-todo-side-title { font-size: 11px; color: #64748b; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 6px 8px; }
+.nb-todo-side a.nb-todo-side-item { display: block; padding: 10px 11px; margin: 5px 0; border-radius: 10px; text-decoration: none; border: 1px solid #e2e8f0; background: #fff; color: #0f172a; transition: border-color 0.15s, background 0.15s; }
+.nb-todo-side a.nb-todo-side-item:hover { border-color: #c7d2fe; background: #fafbff; }
+.nb-todo-side a.nb-todo-side-item.active { border-color: #a5b4fc; background: #eef2ff; box-shadow: inset 0 0 0 1px rgba(99,102,241,0.15); }
+.nb-todo-main { min-width: 0; }
+.nb-todo-banner-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.nb-todo-banner-title { margin: 0; font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: -0.02em; }
+.nb-todo-banner-sub { font-size: 13px; color: #64748b; margin-top: 4px; line-height: 1.45; }
+.nb-todo-composer { border: 1px dashed #c7d2fe; border-radius: 12px; padding: 12px 14px; background: linear-gradient(180deg, #fafbff 0%, #fff 100%); margin-bottom: 16px; }
+.nb-todo-composer-title { font-size: 11px; font-weight: 700; color: #6366f1; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
+.nb-todo-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.nb-todo-card { border-radius: 12px; border: 1px solid #e8e0c8; background: linear-gradient(165deg, #fffdf5 0%, #fff 48%, #f8fafc 100%); box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06); padding: 12px 12px 10px; display: flex; flex-direction: column; gap: 8px; min-height: 120px; }
+.nb-todo-card.nb-todo-card-done { opacity: 0.88; background: #f8fafc; border-color: #e2e8f0; }
+.nb-todo-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.nb-todo-card-title { font-size: 14px; font-weight: 700; line-height: 1.35; color: #0f172a; margin: 0; flex: 1; }
+.nb-todo-card-title.done { text-decoration: line-through; color: #64748b; }
+.nb-todo-pill { font-size: 9px; font-weight: 800; letter-spacing: 0.06em; padding: 3px 7px; border-radius: 999px; white-space: nowrap; }
+.nb-todo-meta { font-size: 11px; color: #64748b; }
+.nb-todo-remark { font-size: 12px; color: #334155; background: rgba(255,255,255,0.7); border: 1px solid #e7e5e4; border-radius: 8px; padding: 6px 8px; }
+.nb-todo-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: auto; padding-top: 4px; border-top: 1px solid rgba(226, 232, 240, 0.8); }
+.nb-todo-actions form { display: inline; }
+.nb-todo-inline-form { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.nb-todo-subwrap { margin-top: 4px; padding-left: 10px; border-left: 3px solid #e2e8f0; display: flex; flex-direction: column; gap: 6px; }
+.nb-todo-subrow { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; }
+.nb-todo-subrow .nb-todo-subtitle { flex: 1; min-width: 120px; }
+.nb-todo-subrow .nb-todo-subtitle.done { text-decoration: line-through; color: #64748b; }
+
 /* ── Tag chip ── */
 .nb-tag { display: inline-flex; align-items: center; gap: 3px; background: rgba(99,102,241,0.1); color: #4338ca; border-radius: 999px; padding: 2px 8px; font-size: 11px; font-weight: 600; margin: 2px; cursor: pointer; }
 .nb-tag:hover { background: rgba(99,102,241,0.2); }
@@ -722,101 +758,9 @@ $licBadgeLabel = $isPro ? '✓ Pro Active' : (($licStatus === 'no_key' || $licSt
             <?php endif; // Pro: CTA/Ticket/Poll/Targeting/Webhook ?>
 
             <?php if (isset($edit_notice) && !empty($edit_notice['id'])): ?>
-            <div style="margin-top:16px;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden;">
-                <div style="padding:10px 14px;background:#f8fafc;font-size:13px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:0.05em;">
-                    Notice To-Do List
-                </div>
-                <div style="padding:14px;">
-                    <form method="post" class="nb-todo-ajax" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
-                        <input type="hidden" name="nb_todo_action" value="add">
-                        <input type="hidden" name="todo_notice_id" value="<?php echo (int)$edit_notice['id']; ?>">
-                        <div class="nb-field" style="margin:0;">
-                            <label>Task title</label>
-                            <input type="text" name="todo_title" required placeholder="Write a task for this notice">
-                        </div>
-                        <div class="nb-field" style="margin:0;">
-                            <label>Due date</label>
-                            <input type="datetime-local" name="todo_due_at">
-                        </div>
-                        <div class="nb-field" style="margin:0;">
-                            <label>Remarks</label>
-                            <input type="text" name="todo_remarks" placeholder="Optional remark">
-                        </div>
-                        <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add Task</button>
-                    </form>
-
-                    <div style="margin-top:12px;">
-                        <?php if (empty($editNoticeTodos)): ?>
-                            <div style="font-size:13px;color:#94a3b8;">No tasks yet for this notice.</div>
-                        <?php else: ?>
-                            <?php foreach ($editNoticeTodos as $task): ?>
-                            <div style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;margin-bottom:8px;background:#fff;">
-                                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                                    <form method="post" class="nb-todo-ajax" style="display:inline;">
-                                        <input type="hidden" name="nb_todo_action" value="toggle">
-                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
-                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm"><?php echo !empty($task['is_completed']) ? '☑' : '☐'; ?></button>
-                                    </form>
-                                    <strong style="<?php echo !empty($task['is_completed']) ? 'text-decoration:line-through;color:#64748b;' : ''; ?>"><?php echo htmlspecialchars($task['title']); ?></strong>
-                                    <form method="post" class="nb-todo-ajax" style="display:inline-flex;gap:6px;align-items:center;">
-                                        <input type="hidden" name="nb_todo_action" value="update_due">
-                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
-                                        <input type="datetime-local" name="todo_due_at" value="<?php echo !empty($task['due_at']) ? date('Y-m-d\TH:i', strtotime($task['due_at'])) : ''; ?>" style="font-size:12px;">
-                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Save Due</button>
-                                    </form>
-                                    <form method="post" class="nb-todo-ajax" style="display:inline-flex;gap:5px;align-items:center;margin-left:auto;">
-                                        <input type="hidden" name="nb_todo_action" value="reorder">
-                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
-                                        <input type="hidden" name="todo_direction" value="up">
-                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">↑</button>
-                                    </form>
-                                    <form method="post" class="nb-todo-ajax" style="display:inline-flex;gap:5px;align-items:center;">
-                                        <input type="hidden" name="nb_todo_action" value="reorder">
-                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
-                                        <input type="hidden" name="todo_direction" value="down">
-                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">↓</button>
-                                    </form>
-                                    <form method="post" onsubmit="return confirm('Delete task and subtasks?');">
-                                        <input type="hidden" name="nb_todo_action" value="delete">
-                                        <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
-                                        <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete</button>
-                                    </form>
-                                </div>
-                                <form method="post" class="nb-todo-ajax" style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                                    <input type="hidden" name="nb_todo_action" value="update_remarks">
-                                    <input type="hidden" name="todo_id" value="<?php echo (int)$task['id']; ?>">
-                                    <input type="text" name="todo_remarks" value="<?php echo htmlspecialchars($task['remarks'] ?? ''); ?>" placeholder="Add remarks..." style="flex:1;min-width:180px;">
-                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Save Remarks</button>
-                                </form>
-                                <form method="post" class="nb-todo-ajax" style="margin-top:8px;display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
-                                    <input type="hidden" name="nb_todo_action" value="add">
-                                    <input type="hidden" name="todo_notice_id" value="<?php echo (int)$edit_notice['id']; ?>">
-                                    <input type="hidden" name="todo_parent_todo_id" value="<?php echo (int)$task['id']; ?>">
-                                    <input type="text" name="todo_title" required placeholder="Add subtask">
-                                    <input type="datetime-local" name="todo_due_at">
-                                    <input type="text" name="todo_remarks" placeholder="Subtask remark">
-                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Add Subtask</button>
-                                </form>
-                                <?php if (!empty($task['children'])): ?>
-                                    <div style="margin-top:8px;padding-left:16px;border-left:2px solid #e2e8f0;">
-                                        <?php foreach ($task['children'] as $sub): ?>
-                                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px;">
-                                                <form method="post" class="nb-todo-ajax" style="display:inline;">
-                                                    <input type="hidden" name="nb_todo_action" value="toggle">
-                                                    <input type="hidden" name="todo_id" value="<?php echo (int)$sub['id']; ?>">
-                                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm"><?php echo !empty($sub['is_completed']) ? '☑' : '☐'; ?></button>
-                                                </form>
-                                                <span style="<?php echo !empty($sub['is_completed']) ? 'text-decoration:line-through;color:#64748b;' : ''; ?>"><?php echo htmlspecialchars($sub['title']); ?></span>
-                                                <span style="font-size:11px;color:#94a3b8;"><?php echo !empty($sub['due_at']) ? 'Due: ' . date('M j, Y g:ia', strtotime($sub['due_at'])) : 'No due date'; ?></span>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                <?php endif; ?>
-                            </div>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </div>
-                </div>
+            <div class="nb-todo-editor-hint">
+                <span>Checklist tasks for this notice are managed in the <strong>To-Do Banners</strong> tab (card layout, subtasks, due dates).</span>
+                <a class="nb-btn nb-btn-primary nb-btn-sm" href="<?php echo htmlspecialchars('addonmodules.php?module=noticebanner&todo_banner_range=all&todo_notice_id=' . (int)$edit_notice['id'] . '#nb-todo-banners'); ?>">Open To-Do workspace</a>
             </div>
             <?php endif; ?>
 
@@ -1392,9 +1336,9 @@ try {
 <div class="nb-card">
     <div class="nb-card-header">
         <h2>🧩 To-Do Banners</h2>
-        <span style="font-size:13px;color:#64748b;"><?php echo count($todoBanners); ?> banner<?php echo count($todoBanners) === 1 ? '' : 's'; ?></span>
+        <span style="font-size:13px;color:#64748b;"><?php echo count($todoBanners); ?> banner<?php echo count($todoBanners) === 1 ? '' : 's'; ?> · card workspace</span>
     </div>
-    <div class="nb-card-body">
+    <div class="nb-card-body nb-todo-app">
         <?php
         $selectedBannerId = (int)($todoFilters['notice_id'] ?? 0);
         if ($selectedBannerId <= 0 && !empty($todoBanners)) {
@@ -1402,7 +1346,10 @@ try {
         }
         $selectedBanner = null;
         foreach ($todoBanners as $tb) {
-            if ((int)$tb['id'] === $selectedBannerId) { $selectedBanner = $tb; break; }
+            if ((int)$tb['id'] === $selectedBannerId) {
+                $selectedBanner = $tb;
+                break;
+            }
         }
         $visibleTodoRows = $selectedBannerId > 0 ? array_values(array_filter($todoRowsAll, fn($r) => (int)$r['notice_id'] === $selectedBannerId)) : [];
         $parentTodoRows = array_values(array_filter($visibleTodoRows, fn($r) => empty($r['parent_todo_id'])));
@@ -1410,17 +1357,23 @@ try {
         foreach ($visibleTodoRows as $r) {
             if (!empty($r['parent_todo_id'])) {
                 $pid = (int)$r['parent_todo_id'];
-                if (!isset($childTodosByParent[$pid])) $childTodosByParent[$pid] = [];
+                if (!isset($childTodosByParent[$pid])) {
+                    $childTodosByParent[$pid] = [];
+                }
                 $childTodosByParent[$pid][] = $r;
             }
         }
+        $nbTodoRangeEsc = htmlspecialchars($todoBannerRange, ENT_QUOTES, 'UTF-8');
         ?>
 
-        <div style="display:flex;justify-content:space-between;align-items:end;gap:10px;flex-wrap:wrap;margin-bottom:12px;">
-            <form method="get" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
+        <div class="nb-todo-toolbar">
+            <form method="get" class="nb-todo-inline-form">
                 <input type="hidden" name="module" value="noticebanner">
+                <?php if ($selectedBannerId > 0): ?>
+                <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                <?php endif; ?>
                 <div class="nb-field" style="margin:0;min-width:170px;">
-                    <label>Show window</label>
+                    <label>Task history window</label>
                     <select name="todo_banner_range">
                         <option value="3m" <?php echo ($todoBannerRange === '3m') ? 'selected' : ''; ?>>Last 3 months</option>
                         <option value="6m" <?php echo ($todoBannerRange === '6m') ? 'selected' : ''; ?>>Last 6 months</option>
@@ -1429,24 +1382,25 @@ try {
                 </div>
                 <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Apply</button>
             </form>
-            <div style="display:flex;gap:8px;">
-                <button type="button" class="nb-btn nb-btn-primary nb-btn-sm" onclick="nbToggleSection('nb-new-banner-body','nb-new-banner-toggle')">+ New Banner</button>
-                <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="nbToggleSection('nb-promote-banner-body','nb-promote-banner-toggle')">Use Existing Notice</button>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="nb-btn nb-btn-primary nb-btn-sm" onclick="nbToggleSection('nb-new-banner-body','nb-new-banner-toggle')">+ New banner</button>
+                <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="nbToggleSection('nb-promote-banner-body','nb-promote-banner-toggle')">Use existing notice</button>
             </div>
         </div>
 
         <div id="nb-new-banner-body" class="nb-collapsible" style="margin-bottom:10px;">
-            <form method="post" style="display:grid;grid-template-columns:1.1fr 1.6fr 1.3fr auto;gap:10px;align-items:end;">
+            <form method="post" class="nb-grid" style="grid-template-columns:1.1fr 1.6fr 1.3fr auto;align-items:end;gap:10px;">
+                <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                 <div class="nb-field" style="margin:0;">
-                    <label>Banner title</label>
-                    <input type="text" name="todo_banner_title" required placeholder="Week 16 - Plan">
+                    <label>Title</label>
+                    <input type="text" name="todo_banner_title" required placeholder="e.g. Sprint — billing rollout">
                 </div>
                 <div class="nb-field" style="margin:0;">
-                    <label>Description</label>
-                    <input type="text" name="todo_banner_content" placeholder="Optional short summary">
+                    <label>Short description</label>
+                    <input type="text" name="todo_banner_content" placeholder="Shown above tasks; banner body syncs from checklist">
                 </div>
                 <div class="nb-field" style="margin:0;">
-                    <label>Tag admins (optional)</label>
+                    <label>Assign / tag admins</label>
                     <select name="todo_banner_assigned_admins[]" multiple style="height:72px;">
                         <?php foreach ($admins as $a): ?>
                             <option value="<?php echo (int)$a->id; ?>"><?php echo htmlspecialchars($a->firstname . ' ' . $a->lastname . ' (@' . $a->username . ')'); ?></option>
@@ -1457,73 +1411,82 @@ try {
             </form>
         </div>
 
-        <div id="nb-promote-banner-body" class="nb-collapsible" style="margin-bottom:12px;">
-            <form method="post" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;">
-                <div class="nb-field" style="margin:0;min-width:300px;">
-                    <label>Add existing notice to To-Do</label>
+        <div id="nb-promote-banner-body" class="nb-collapsible" style="margin-bottom:14px;">
+            <form method="post" class="nb-todo-inline-form">
+                <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                <div class="nb-field" style="margin:0;min-width:280px;flex:1;">
+                    <label>Turn a normal notice into a To-Do banner</label>
                     <select name="promote_notice_id" required>
-                        <option value="">Select existing notice...</option>
+                        <option value="">Choose notice…</option>
                         <?php foreach ($notices as $n): ?>
                             <option value="<?php echo (int)$n['id']; ?>"><?php echo htmlspecialchars($n['notice_title']); ?></option>
                         <?php endforeach; ?>
                     </select>
                 </div>
-                <button type="submit" name="promote_notice_to_todo_banner" value="1" class="nb-btn nb-btn-ghost nb-btn-sm">Add Existing</button>
+                <button type="submit" name="promote_notice_to_todo_banner" value="1" class="nb-btn nb-btn-ghost nb-btn-sm" style="margin-top:22px;">Promote</button>
             </form>
         </div>
 
-        <div style="display:grid;grid-template-columns:270px 1fr;gap:14px;">
-            <div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px;background:#fff;">
-                <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:6px 8px;">Banners</div>
+        <div class="nb-todo-layout">
+            <div class="nb-todo-side">
+                <div class="nb-todo-side-title">Boards</div>
                 <?php if (empty($todoBanners)): ?>
-                    <div style="padding:8px;color:#94a3b8;font-size:13px;">No banners yet.</div>
+                    <div style="padding:10px;color:#94a3b8;font-size:13px;">No To-Do banners yet. Create one or promote a notice.</div>
                 <?php else: ?>
                     <?php foreach ($todoBanners as $tb): ?>
                         <?php $active = ((int)$tb['id'] === $selectedBannerId); ?>
-                        <a href="addonmodules.php?module=noticebanner&todo_banner_range=<?php echo urlencode($todoBannerRange); ?>&todo_notice_id=<?php echo (int)$tb['id']; ?>#nb-todo-banners"
-                           style="display:block;padding:9px 10px;margin:4px 0;border-radius:8px;text-decoration:none;border:1px solid <?php echo $active ? '#c7d2fe' : '#e2e8f0'; ?>;background:<?php echo $active ? '#eef2ff' : '#fff'; ?>;color:#0f172a;">
-                            <?php
-                            $tbOpen = 0;
-                            foreach ($todoRowsAll as $tr) {
-                                if ((int)$tr['notice_id'] === (int)$tb['id'] && empty($tr['is_completed'])) $tbOpen++;
+                        <?php
+                        $tbOpen = 0;
+                        foreach ($todoRowsAll as $tr) {
+                            if ((int)$tr['notice_id'] === (int)$tb['id'] && empty($tr['is_completed'])) {
+                                $tbOpen++;
                             }
-                            ?>
-                            <div style="font-size:13px;font-weight:600;line-height:1.3;"><?php echo htmlspecialchars($tb['notice_title']); ?></div>
-                            <div style="font-size:11px;color:#64748b;margin-top:2px;"><?php echo $tbOpen; ?> open task<?php echo $tbOpen === 1 ? '' : 's'; ?></div>
+                        }
+                        ?>
+                        <a class="nb-todo-side-item<?php echo $active ? ' active' : ''; ?>"
+                           href="addonmodules.php?module=noticebanner&amp;todo_banner_range=<?php echo urlencode($todoBannerRange); ?>&amp;todo_notice_id=<?php echo (int)$tb['id']; ?>#nb-todo-banners">
+                            <div style="font-size:13px;font-weight:700;line-height:1.35;"><?php echo htmlspecialchars($tb['notice_title']); ?></div>
+                            <div style="font-size:11px;color:#64748b;margin-top:3px;"><?php echo (int)$tbOpen; ?> open</div>
                         </a>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
 
-            <div>
+            <div class="nb-todo-main">
                 <?php if (!$selectedBanner): ?>
-                    <div style="padding:14px;border:1px dashed #cbd5e1;border-radius:8px;color:#64748b;">Select or create a To-Do banner to start.</div>
+                    <div style="padding:20px;border:1px dashed #cbd5e1;border-radius:12px;color:#64748b;font-size:14px;text-align:center;">
+                        Select a board on the left or create a new To-Do banner.
+                    </div>
                 <?php else: ?>
-                    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+                    <div class="nb-todo-banner-head">
                         <div>
-                            <h3 style="margin:0;font-size:17px;"><?php echo htmlspecialchars($selectedBanner['notice_title']); ?></h3>
-                            <div style="font-size:12px;color:#64748b;"><?php echo htmlspecialchars($selectedBanner['notice_content'] ?? ''); ?></div>
+                            <h3 class="nb-todo-banner-title"><?php echo htmlspecialchars($selectedBanner['notice_title']); ?></h3>
+                            <?php if (!empty($selectedBanner['notice_content'])): ?>
+                                <div class="nb-todo-banner-sub"><?php echo htmlspecialchars($selectedBanner['notice_content']); ?></div>
+                            <?php endif; ?>
                             <?php if (!empty($selectedBanner['assigned_admins'])): ?>
-                                <div style="margin-top:5px;display:flex;gap:4px;flex-wrap:wrap;">
+                                <div style="margin-top:8px;display:flex;gap:4px;flex-wrap:wrap;">
                                     <?php foreach (($selectedBanner['assigned_admins'] ?? []) as $aid): ?>
                                         <span class="nb-chip">@<?php echo htmlspecialchars($adminMap[(int)$aid] ?? ('Admin #' . (int)$aid)); ?></span>
                                     <?php endforeach; ?>
                                 </div>
                             <?php endif; ?>
                         </div>
-                        <div style="display:flex;gap:6px;align-items:center;">
-                            <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="nbToggleSection('nb-edit-banner-body','nb-edit-banner-toggle')">Edit Banner</button>
-                            <form method="post" onsubmit="return confirm('Delete this To-Do banner and its related tasks?');">
+                        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+                            <button type="button" class="nb-btn nb-btn-ghost nb-btn-sm" onclick="nbToggleSection('nb-edit-banner-body','nb-edit-banner-toggle')">Edit board</button>
+                            <form method="post" onsubmit="return confirm('Delete this To-Do banner and all of its tasks?');" style="display:inline;">
+                                <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                                 <input type="hidden" name="delete_notice" value="<?php echo (int)$selectedBanner['id']; ?>">
-                                <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete Banner</button>
+                                <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete</button>
                             </form>
                         </div>
                     </div>
 
-                    <div id="nb-edit-banner-body" class="nb-collapsible" style="margin-bottom:10px;">
-                        <form method="post" style="border:1px solid #e2e8f0;border-radius:8px;padding:10px;background:#f8fafc;">
+                    <div id="nb-edit-banner-body" class="nb-collapsible" style="margin-bottom:14px;">
+                        <form method="post" style="border:1px solid #e2e8f0;border-radius:10px;padding:12px;background:#f8fafc;">
                             <input type="hidden" name="save_todo_banner_quick" value="1">
                             <input type="hidden" name="todo_banner_edit_id" value="<?php echo (int)$selectedBanner['id']; ?>">
+                            <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                             <div class="nb-field" style="margin:0 0 8px 0;">
                                 <label>Title</label>
                                 <input type="text" name="todo_banner_edit_title" required value="<?php echo htmlspecialchars($selectedBanner['notice_title']); ?>">
@@ -1533,7 +1496,7 @@ try {
                                 <input type="text" name="todo_banner_edit_content" value="<?php echo htmlspecialchars($selectedBanner['notice_content'] ?? ''); ?>">
                             </div>
                             <div class="nb-field" style="margin:0 0 8px 0;">
-                                <label>Tag admins (inline mention style)</label>
+                                <label>Tagged admins</label>
                                 <?php $selAdmins = array_map('intval', $selectedBanner['assigned_admins'] ?? []); ?>
                                 <select name="todo_banner_edit_assigned_admins[]" multiple style="height:88px;">
                                     <?php foreach ($admins as $a): ?>
@@ -1542,78 +1505,155 @@ try {
                                         </option>
                                     <?php endforeach; ?>
                                 </select>
-                                <span style="font-size:11px;color:#94a3b8;">Leave empty to show for all admins.</span>
+                                <span style="font-size:11px;color:#94a3b8;">Empty = visible to all admins.</span>
                             </div>
                             <label class="nb-switch" style="margin-bottom:8px;">
                                 <input type="checkbox" name="todo_banner_edit_visible_admins" value="1" <?php echo !empty($selectedBanner['show_to_admins']) ? 'checked' : ''; ?>>
                                 <span class="nb-switch-track"></span>
-                                Visible to Admins
+                                Visible in admin area
                             </label>
-                            <div><button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Save Banner</button></div>
+                            <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Save board</button>
                         </form>
                     </div>
 
-                    <h3 style="margin:0 0 10px 0;font-size:15px;color:#0f172a;">Tasks</h3>
-                    <div style="border:1px solid #e2e8f0;border-radius:8px;padding:12px;background:#f8fafc;margin-bottom:12px;">
-                        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:8px;">Quick Add Task</div>
-                        <form method="post" class="nb-todo-ajax" style="display:grid;grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
+                    <div class="nb-todo-composer">
+                        <div class="nb-todo-composer-title">New task</div>
+                        <form method="post" class="nb-grid" style="grid-template-columns:2fr 1fr 1fr auto;gap:8px;align-items:end;">
                             <input type="hidden" name="nb_todo_action" value="add">
                             <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBanner['id']; ?>">
+                            <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                            <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                             <div class="nb-field" style="margin:0;">
-                                <label>Task title</label>
-                                <input type="text" name="todo_title" required placeholder="Write task title">
+                                <label>Title</label>
+                                <input type="text" name="todo_title" required placeholder="What needs doing?">
                             </div>
                             <div class="nb-field" style="margin:0;">
-                                <label>Due date</label>
+                                <label>Due</label>
                                 <input type="datetime-local" name="todo_due_at">
                             </div>
                             <div class="nb-field" style="margin:0;">
-                                <label>Remarks</label>
+                                <label>Note</label>
                                 <input type="text" name="todo_remarks" placeholder="Optional">
                             </div>
                             <button type="submit" class="nb-btn nb-btn-primary nb-btn-sm">Add</button>
                         </form>
                     </div>
 
-                    <?php if (empty($visibleTodoRows)): ?>
-                        <div style="color:#94a3b8;font-size:14px;">No tasks yet in this banner.</div>
+                    <?php if (empty($parentTodoRows)): ?>
+                        <p style="color:#94a3b8;font-size:14px;margin:0;">No tasks yet. Add one above — the live banner checklist updates automatically.</p>
                     <?php else: ?>
-                    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px;">
-                        <?php foreach ($visibleTodoRows as $todo): ?>
+                    <div class="nb-todo-board">
+                        <?php foreach ($parentTodoRows as $todo): ?>
                             <?php
                             $bucket = $todo['status_bucket'] ?? 'open';
                             $statusColor = '#64748b';
-                            if ($bucket === 'completed') $statusColor = '#166534';
-                            if ($bucket === 'overdue') $statusColor = '#991b1b';
-                            if ($bucket === 'due_today') $statusColor = '#b45309';
-                            if ($bucket === 'upcoming') $statusColor = '#1d4ed8';
+                            if ($bucket === 'completed') {
+                                $statusColor = '#166534';
+                            }
+                            if ($bucket === 'overdue') {
+                                $statusColor = '#991b1b';
+                            }
+                            if ($bucket === 'due_today') {
+                                $statusColor = '#b45309';
+                            }
+                            if ($bucket === 'upcoming') {
+                                $statusColor = '#1d4ed8';
+                            }
+                            $tid = (int)$todo['id'];
+                            $subs = $childTodosByParent[$tid] ?? [];
                             ?>
-                            <div style="border:1px solid #e2e8f0;border-radius:10px;padding:10px;background:#fff;">
-                                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
-                                    <div style="font-size:14px;font-weight:700;line-height:1.3;<?php echo !empty($todo['is_completed']) ? 'text-decoration:line-through;color:#64748b;' : 'color:#0f172a;'; ?>">
-                                        <?php echo !empty($todo['parent_todo_id']) ? '↳ ' : ''; ?><?php echo htmlspecialchars($todo['title']); ?>
-                                    </div>
-                                    <span style="font-size:10px;font-weight:700;color:<?php echo $statusColor; ?>;"><?php echo htmlspecialchars(strtoupper(str_replace('_', ' ', $bucket))); ?></span>
+                            <article class="nb-todo-card<?php echo !empty($todo['is_completed']) ? ' nb-todo-card-done' : ''; ?>">
+                                <div class="nb-todo-card-top">
+                                    <p class="nb-todo-card-title<?php echo !empty($todo['is_completed']) ? ' done' : ''; ?>"><?php echo htmlspecialchars($todo['title']); ?></p>
+                                    <span class="nb-todo-pill" style="background:rgba(15,23,42,0.06);color:<?php echo $statusColor; ?>;"><?php echo htmlspecialchars(strtoupper(str_replace('_', ' ', $bucket))); ?></span>
                                 </div>
-                                <div style="margin-top:7px;font-size:11px;color:#64748b;">
-                                    Due: <?php echo !empty($todo['due_at']) ? date('M j, Y g:ia', strtotime($todo['due_at'])) : 'No due date'; ?>
+                                <form method="post" class="nb-todo-inline-form" style="margin:0;">
+                                    <input type="hidden" name="nb_todo_action" value="update_due">
+                                    <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
+                                    <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                    <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                    <span class="nb-todo-meta">Due</span>
+                                    <input type="datetime-local" name="todo_due_at" value="<?php echo !empty($todo['due_at']) ? date('Y-m-d\TH:i', strtotime($todo['due_at'])) : ''; ?>" style="font-size:12px;padding:4px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Apply</button>
+                                </form>
+                                <form method="post" class="nb-todo-inline-form" style="margin:0;">
+                                    <input type="hidden" name="nb_todo_action" value="update_remarks">
+                                    <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
+                                    <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                    <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                    <input type="text" name="todo_remarks" value="<?php echo htmlspecialchars($todo['remarks'] ?? ''); ?>" placeholder="Remarks" style="flex:1;min-width:160px;font-size:13px;padding:6px 8px;border:1px solid #cbd5e1;border-radius:6px;">
+                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">Save</button>
+                                </form>
+
+                                <?php if (!empty($subs)): ?>
+                                <div class="nb-todo-subwrap">
+                                    <?php foreach ($subs as $sub): ?>
+                                        <div class="nb-todo-subrow">
+                                            <form method="post" style="display:inline;">
+                                                <input type="hidden" name="nb_todo_action" value="toggle">
+                                                <input type="hidden" name="todo_id" value="<?php echo (int)$sub['id']; ?>">
+                                                <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" title="Toggle done"><?php echo !empty($sub['is_completed']) ? '☑' : '☐'; ?></button>
+                                            </form>
+                                            <span class="nb-todo-subtitle<?php echo !empty($sub['is_completed']) ? ' done' : ''; ?>"><?php echo htmlspecialchars($sub['title']); ?></span>
+                                            <span style="font-size:11px;color:#94a3b8;"><?php echo !empty($sub['due_at']) ? date('M j g:ia', strtotime($sub['due_at'])) : ''; ?></span>
+                                            <form method="post" style="display:inline;margin-left:auto;" onsubmit="return confirm('Delete this subtask?');">
+                                                <input type="hidden" name="nb_todo_action" value="delete">
+                                                <input type="hidden" name="todo_id" value="<?php echo (int)$sub['id']; ?>">
+                                                <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                                <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                                <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" style="color:#b91c1c;">✕</button>
+                                            </form>
+                                        </div>
+                                    <?php endforeach; ?>
                                 </div>
-                                <?php if (!empty($todo['remarks'])): ?>
-                                    <div style="margin-top:7px;padding:6px 8px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:12px;color:#334155;"><?php echo htmlspecialchars($todo['remarks']); ?></div>
                                 <?php endif; ?>
-                                <div style="margin-top:8px;display:flex;gap:6px;">
-                                    <form method="post" class="nb-todo-ajax">
+
+                                <form method="post" class="nb-todo-inline-form" style="margin:0;">
+                                    <input type="hidden" name="nb_todo_action" value="add">
+                                    <input type="hidden" name="todo_notice_id" value="<?php echo (int)$selectedBanner['id']; ?>">
+                                    <input type="hidden" name="todo_parent_todo_id" value="<?php echo $tid; ?>">
+                                    <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                    <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                    <input type="text" name="todo_title" required placeholder="Subtask" style="flex:1;min-width:140px;font-size:13px;">
+                                    <input type="datetime-local" name="todo_due_at" style="font-size:12px;">
+                                    <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm">+ Sub</button>
+                                </form>
+
+                                <div class="nb-todo-actions">
+                                    <form method="post" style="display:inline;">
                                         <input type="hidden" name="nb_todo_action" value="toggle">
-                                        <input type="hidden" name="todo_id" value="<?php echo (int)$todo['id']; ?>">
-                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm"><?php echo !empty($todo['is_completed']) ? '☑ Done' : '☐ Done'; ?></button>
+                                        <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
+                                        <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                        <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm"><?php echo !empty($todo['is_completed']) ? 'Mark open' : 'Mark done'; ?></button>
                                     </form>
-                                    <form method="post" onsubmit="return confirm('Delete this task?');">
+                                    <form method="post" style="display:inline;">
+                                        <input type="hidden" name="nb_todo_action" value="reorder">
+                                        <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
+                                        <input type="hidden" name="todo_direction" value="up">
+                                        <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                        <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" title="Move up">↑</button>
+                                    </form>
+                                    <form method="post" style="display:inline;">
+                                        <input type="hidden" name="nb_todo_action" value="reorder">
+                                        <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
+                                        <input type="hidden" name="todo_direction" value="down">
+                                        <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                        <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
+                                        <button type="submit" class="nb-btn nb-btn-ghost nb-btn-sm" title="Move down">↓</button>
+                                    </form>
+                                    <form method="post" style="display:inline;" onsubmit="return confirm('Delete this task and its subtasks?');">
                                         <input type="hidden" name="nb_todo_action" value="delete">
-                                        <input type="hidden" name="todo_id" value="<?php echo (int)$todo['id']; ?>">
+                                        <input type="hidden" name="todo_id" value="<?php echo $tid; ?>">
+                                        <input type="hidden" name="todo_redirect_notice_id" value="<?php echo (int)$selectedBannerId; ?>">
+                                        <input type="hidden" name="todo_banner_range" value="<?php echo $nbTodoRangeEsc; ?>">
                                         <button type="submit" class="nb-btn nb-btn-danger nb-btn-sm">Delete</button>
                                     </form>
                                 </div>
-                            </div>
+                            </article>
                         <?php endforeach; ?>
                     </div>
                     <?php endif; ?>
@@ -1865,31 +1905,6 @@ function nbMainTab(pane, el) {
         });
     }
 })();
-
-document.querySelectorAll('form.nb-todo-ajax').forEach(function(form) {
-    form.addEventListener('submit', function(ev) {
-        ev.preventDefault();
-        var fd = new FormData(form);
-        fd.append('nb_todo_ajax', '1');
-        fetch(window.location.href, {
-            method: 'POST',
-            body: fd,
-            headers: {'X-Requested-With': 'XMLHttpRequest'}
-        })
-        .then(function(r){ return r.json(); })
-        .then(function(json){
-            if (!json || !json.ok) {
-                alert((json && json.message) ? json.message : 'Failed to update task');
-                return;
-            }
-            if (window.location.hash !== '#nb-todo-banners') {
-                window.location.hash = '#nb-todo-banners';
-            }
-            window.location.reload();
-        })
-        .catch(function(){ alert('Unable to update task right now.'); });
-    });
-});
 
 // ── Markdown editor tab switching ─────────────────────────────────────────────
 function nbShowTab(tab, el) {

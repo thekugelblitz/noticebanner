@@ -843,6 +843,20 @@ function noticebanner_get_todo_notice_id(int $todoId): int {
 }
 }
 
+if (!function_exists('noticebanner_admin_todo_redirect_url')) {
+/**
+ * Stable admin URL back to the To-Do Banners tab (optional selected banner + time range).
+ */
+function noticebanner_admin_todo_redirect_url(int $noticeId, string $range = '3m'): string {
+    $rangeQ = in_array($range, ['3m', '6m', 'all'], true) ? $range : '3m';
+    $q = ['module' => 'noticebanner', 'todo_banner_range' => $rangeQ];
+    if ($noticeId > 0) {
+        $q['todo_notice_id'] = $noticeId;
+    }
+    return 'addonmodules.php?' . http_build_query($q) . '#nb-todo-banners';
+}
+}
+
 if (!function_exists('noticebanner_delete_todo_recursive')) {
 function noticebanner_delete_todo_recursive(int $todoId): void {
     try {
@@ -1256,8 +1270,10 @@ function noticebanner_output($vars) {
         // ── To-Do actions (admin only) ──
         if (isset($_POST['nb_todo_action'])) {
             $action = trim((string)$_POST['nb_todo_action']);
-            $isAjax = isset($_POST['nb_todo_ajax']) || !empty($_SERVER['HTTP_X_REQUESTED_WITH']);
+            $isAjax = !empty($_POST['nb_todo_ajax']);
             $resp = ['ok' => false, 'message' => 'Invalid to-do request'];
+            $rbNoticeId = (int)($_POST['todo_redirect_notice_id'] ?? $_POST['todo_notice_id'] ?? 0);
+            $todoRangePost = trim((string)($_POST['todo_banner_range'] ?? '3m'));
 
             try {
                 $adminId = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : 0;
@@ -1298,6 +1314,7 @@ function noticebanner_output($vars) {
                         noticebanner_sync_parent_todo_completion($parentTodoId, $adminId);
                     }
                     noticebanner_sync_todo_banner_content($noticeId);
+                    $rbNoticeId = $noticeId;
                     $resp = ['ok' => true, 'message' => 'Task added'];
                 } elseif ($action === 'toggle') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1317,6 +1334,7 @@ function noticebanner_output($vars) {
                         noticebanner_sync_parent_todo_completion((int)$row->parent_todo_id, $adminId);
                     }
                     noticebanner_sync_todo_banner_content((int)$row->notice_id);
+                    $rbNoticeId = (int)$row->notice_id;
                     $resp = ['ok' => true, 'message' => 'Task updated'];
                 } elseif ($action === 'update_due') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1331,6 +1349,7 @@ function noticebanner_output($vars) {
                     noticebanner_todo_add_history($todoId, 'duedate_changed', ['due_at' => $row->due_at], ['due_at' => $newDue]);
                     noticebanner_log((int)$row->notice_id, 'todo_due_updated', $row->title);
                     noticebanner_sync_todo_banner_content((int)$row->notice_id);
+                    $rbNoticeId = (int)$row->notice_id;
                     $resp = ['ok' => true, 'message' => 'Due date updated'];
                 } elseif ($action === 'update_remarks') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1344,6 +1363,7 @@ function noticebanner_output($vars) {
                     noticebanner_todo_add_history($todoId, 'remarked', ['remarks' => (string)$row->remarks], ['remarks' => $remarks]);
                     noticebanner_log((int)$row->notice_id, 'todo_remarks_updated', $row->title);
                     noticebanner_sync_todo_banner_content((int)$row->notice_id);
+                    $rbNoticeId = (int)$row->notice_id;
                     $resp = ['ok' => true, 'message' => 'Remarks updated'];
                 } elseif ($action === 'delete') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1357,6 +1377,7 @@ function noticebanner_output($vars) {
                         noticebanner_sync_parent_todo_completion($parentTodoId, $adminId);
                     }
                     noticebanner_sync_todo_banner_content((int)$row->notice_id);
+                    $rbNoticeId = (int)$row->notice_id;
                     $resp = ['ok' => true, 'message' => 'Task deleted'];
                 } elseif ($action === 'reorder') {
                     $todoId = (int)($_POST['todo_id'] ?? 0);
@@ -1383,6 +1404,7 @@ function noticebanner_output($vars) {
                         }
                     }
                     noticebanner_sync_todo_banner_content((int)$row->notice_id);
+                    $rbNoticeId = (int)$row->notice_id;
                     $resp = ['ok' => true, 'message' => 'Task reordered'];
                 }
             } catch (\Throwable $e) {
@@ -1394,12 +1416,15 @@ function noticebanner_output($vars) {
                 echo json_encode($resp);
                 exit;
             }
-            if (!empty($_POST['todo_redirect_notice_id'])) {
-                $nid = (int)$_POST['todo_redirect_notice_id'];
-                header('Location: addonmodules.php?module=noticebanner&todo_notice_id=' . $nid . '#nb-todo-banners');
+            $rangeQ = in_array($todoRangePost, ['3m', '6m', 'all'], true) ? $todoRangePost : '3m';
+            $fallbackNid = $rbNoticeId > 0 ? $rbNoticeId : (int)($_POST['todo_notice_id'] ?? 0);
+            if (!$resp['ok']) {
+                $_SESSION['nb_noticebanner_flash'] = '<div class="nb-alert nb-alert-danger">'
+                    . htmlspecialchars($resp['message']) . '</div>';
+                header('Location: ' . noticebanner_admin_todo_redirect_url($fallbackNid, $rangeQ));
                 exit;
             }
-            header('Location: ' . $_SERVER['REQUEST_URI']);
+            header('Location: ' . noticebanner_admin_todo_redirect_url($rbNoticeId > 0 ? $rbNoticeId : $fallbackNid, $rangeQ));
             exit;
         }
 
@@ -1682,7 +1707,10 @@ function noticebanner_output($vars) {
                         'updated_at'           => date('Y-m-d H:i:s'),
                     ]);
                     noticebanner_log($newId, 'todo_banner_created', $title);
-                    $message = '<div class="nb-alert nb-alert-success">To-Do banner created. You can now add tasks in the To-Do tab.</div>';
+                    $_SESSION['nb_noticebanner_flash'] = '<div class="nb-alert nb-alert-success">To-Do banner created. Add tasks below.</div>';
+                    $tr = trim((string)($_POST['todo_banner_range'] ?? '3m'));
+                    header('Location: ' . noticebanner_admin_todo_redirect_url((int)$newId, $tr));
+                    exit;
                 } catch (\Exception $e) {
                     $message = '<div class="nb-alert nb-alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
                 }
@@ -1690,6 +1718,7 @@ function noticebanner_output($vars) {
         }
         if (isset($_POST['promote_notice_to_todo_banner'])) {
             $noticeId = (int)($_POST['promote_notice_id'] ?? 0);
+            $tr = trim((string)($_POST['todo_banner_range'] ?? '3m'));
             if ($noticeId > 0) {
                 try {
                     \WHMCS\Database\Capsule::table('mod_noticebanner')
@@ -1700,7 +1729,9 @@ function noticebanner_output($vars) {
                             'updated_at'     => date('Y-m-d H:i:s'),
                         ]);
                     noticebanner_log($noticeId, 'todo_banner_promoted', 'Promoted existing notice to To-Do banner');
-                    $message = '<div class="nb-alert nb-alert-success">Existing notice added to To-Do banners.</div>';
+                    $_SESSION['nb_noticebanner_flash'] = '<div class="nb-alert nb-alert-success">Notice is now a To-Do banner.</div>';
+                    header('Location: ' . noticebanner_admin_todo_redirect_url($noticeId, $tr));
+                    exit;
                 } catch (\Exception $e) {
                     $message = '<div class="nb-alert nb-alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
                 }
@@ -1713,6 +1744,7 @@ function noticebanner_output($vars) {
             $visibleAdmins = isset($_POST['todo_banner_edit_visible_admins']) ? 1 : 0;
             $assignedAdmins = isset($_POST['todo_banner_edit_assigned_admins']) && is_array($_POST['todo_banner_edit_assigned_admins'])
                 ? array_values(array_unique(array_map('intval', $_POST['todo_banner_edit_assigned_admins']))) : [];
+            $tr = trim((string)($_POST['todo_banner_range'] ?? '3m'));
             if ($bannerId <= 0 || $title === '') {
                 $message = '<div class="nb-alert nb-alert-danger">Banner title is required.</div>';
             } else {
@@ -1730,7 +1762,9 @@ function noticebanner_output($vars) {
                             'updated_at'     => date('Y-m-d H:i:s'),
                         ]);
                     noticebanner_log($bannerId, 'todo_banner_updated', $title);
-                    $message = '<div class="nb-alert nb-alert-success">To-Do banner updated.</div>';
+                    $_SESSION['nb_noticebanner_flash'] = '<div class="nb-alert nb-alert-success">To-Do banner saved.</div>';
+                    header('Location: ' . noticebanner_admin_todo_redirect_url($bannerId, $tr));
+                    exit;
                 } catch (\Exception $e) {
                     $message = '<div class="nb-alert nb-alert-danger">Error: ' . htmlspecialchars($e->getMessage()) . '</div>';
                 }
@@ -1830,8 +1864,10 @@ function noticebanner_output($vars) {
         // ── Delete ──
         elseif (isset($_POST['delete_notice'])) {
             $id = (int)$_POST['delete_notice'];
+            $tr = trim((string)($_POST['todo_banner_range'] ?? '3m'));
             try {
                 $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
+                $wasTodo = $row && !empty((int)$row->is_todo_banner);
                 $todoIds = \WHMCS\Database\Capsule::table('mod_noticebanner_todos')->where('notice_id', $id)->pluck('id')->toArray();
                 if (!empty($todoIds)) {
                     \WHMCS\Database\Capsule::table('mod_noticebanner_todo_history')->whereIn('todo_id', $todoIds)->delete();
@@ -1840,6 +1876,11 @@ function noticebanner_output($vars) {
                 \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->delete();
                 \WHMCS\Database\Capsule::table('mod_noticebanner_reads')->where('notice_id', $id)->delete();
                 noticebanner_log(null, 'deleted', $row->notice_title ?? "ID $id");
+                if ($wasTodo) {
+                    $_SESSION['nb_noticebanner_flash'] = '<div class="nb-alert nb-alert-success">To-Do banner deleted.</div>';
+                    header('Location: ' . noticebanner_admin_todo_redirect_url(0, $tr));
+                    exit;
+                }
                 $message = '<div class="nb-alert nb-alert-success">Notice deleted.</div>';
             } catch (\Exception $e) {}
         }
@@ -1944,6 +1985,11 @@ function noticebanner_output($vars) {
         $templates = noticebanner_get_templates();
     }
 
+    if ($_SERVER['REQUEST_METHOD'] === 'GET' && !empty($_SESSION['nb_noticebanner_flash'])) {
+        $message = $_SESSION['nb_noticebanner_flash'];
+        unset($_SESSION['nb_noticebanner_flash']);
+    }
+
     $isPro         = noticebanner_license_is_pro();
     $licenseStatus = noticebanner_license_status();
     $freeCap       = noticebanner_free_notice_cap();
@@ -1967,7 +2013,6 @@ function noticebanner_output($vars) {
     }
     $todoAdminMap = noticebanner_get_admin_name_map($todoAdminIds);
     $todoNoticeMap = noticebanner_get_notice_title_map($todoNoticeIds);
-    $editNoticeTodos = isset($edit_notice['id']) ? noticebanner_get_todos_for_notice((int)$edit_notice['id']) : [];
     $todoBanners = array_values(array_filter($notices, fn($n) => !empty($n['is_todo_banner'])));
     $currentAdminId = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : 0;
     $todoBanners = array_values(array_filter($todoBanners, function ($n) use ($currentAdminId) {
