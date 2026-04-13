@@ -6,27 +6,32 @@ if (!defined('WHMCS')) {
 require_once __DIR__ . '/noticebanner.php';
 require_once __DIR__ . '/widget.php';
 
-// ─── Poll vote + Acknowledge endpoints — intercept POST on ANY page ──────────
-add_hook('ClientAreaPage', 1, function ($vars) {
-    NoticeBannerHelper::handleAcknowledgePost('client');
-    NoticeBannerHelper::handlePollVotePost();
-});
-add_hook('AdminAreaPage', 1, function ($vars) {
-    NoticeBannerHelper::handleBannerTodoPost();
-    NoticeBannerHelper::handleAcknowledgePost('admin');
-    NoticeBannerHelper::handlePollVotePost();
-});
+// Register hooks once (prevents duplicate banners if this file is ever loaded twice)
+if (!defined('NOTICEBANNER_HOOKS_REGISTERED')) {
+    define('NOTICEBANNER_HOOKS_REGISTERED', true);
 
-// ─── Hook registrations ───────────────────────────────────────────────────────
+    // ─── Poll vote + Acknowledge endpoints — intercept POST on ANY page ──────────
+    add_hook('ClientAreaPage', 1, function ($vars) {
+        NoticeBannerHelper::handleAcknowledgePost('client');
+        NoticeBannerHelper::handlePollVotePost();
+    });
+    add_hook('AdminAreaPage', 1, function ($vars) {
+        NoticeBannerHelper::handleBannerTodoPost();
+        NoticeBannerHelper::handleAcknowledgePost('admin');
+        NoticeBannerHelper::handlePollVotePost();
+    });
 
-add_hook('ClientAreaHeaderOutput', 1, function ($vars) {
-    return NoticeBannerHelper::renderNotices('client');
-});
+    // ─── Hook registrations ───────────────────────────────────────────────────────
 
-// Single admin hook — avoids running the renderer 3× per request (Head/Footer/Header)
-add_hook('AdminAreaHeaderOutput', 1, function ($vars) {
-    return NoticeBannerHelper::renderNotices('admin');
-});
+    add_hook('ClientAreaHeaderOutput', 1, function ($vars) {
+        return NoticeBannerHelper::renderNotices('client');
+    });
+
+    // Single admin hook — avoids running the renderer 3× per request (Head/Footer/Header)
+    add_hook('AdminAreaHeaderOutput', 1, function ($vars) {
+        return NoticeBannerHelper::renderNotices('admin');
+    });
+}
 
 // ─── Renderer ────────────────────────────────────────────────────────────────
 
@@ -263,6 +268,19 @@ details.nb-todo-banner-fold[open] > summary::before{content:"▾";}
 /* Beat aggressive client-theme resets so headline/body stay visible */
 .nb-promo-gradient .nb-promo-headline,.nb-promo-flash .nb-promo-headline,.nb-promo-neon .nb-promo-headline{color:#fff!important;}
 .nb-promo-neon .nb-promo-sub{color:#e2e8f0!important;}
+</style>';
+        }
+
+        /** Full-viewport-width shell for client area (breaks out of centered theme containers). */
+        public static function clientAreaBleedStyles(): string {
+            return '<style id="nb-client-bleed-css">
+.nb-noticebanner-bleed{width:100vw;max-width:100vw;position:relative;left:50%;right:50%;margin-left:-50vw;margin-right:-50vw;box-sizing:border-box;padding:0;}
+.nb-noticebanner-bleed .nb-client-notice-bar{width:100%!important;max-width:100%!important;margin:0!important;border-radius:0!important;box-sizing:border-box;}
+.nb-banner-promo--clientStrip{width:100%!important;max-width:100%!important;margin:0!important;padding:0!important;border:none!important;border-radius:0!important;box-shadow:none!important;}
+.nb-banner-promo--clientStrip .nb-promo-client-slot--strip{margin-top:0!important;padding:0!important;}
+.nb-banner-promo--clientStrip .nb-promo-surface{border-radius:0!important;max-width:none!important;width:100%!important;margin:0!important;box-sizing:border-box;box-shadow:none!important;}
+.nb-banner-promo--clientStrip .nb-promo-gradient,.nb-banner-promo--clientStrip .nb-promo-flash,.nb-banner-promo--clientStrip .nb-promo-neon,.nb-banner-promo--clientStrip .nb-promo-ribbon,.nb-banner-promo--clientStrip .nb-promo-minimal{box-shadow:none!important;}
+.nb-banner-promo--clientStrip .nb-promo-surface{padding-top:52px!important;padding-left:clamp(16px,4vw,28px)!important;padding-right:clamp(16px,4vw,28px)!important;padding-bottom:22px!important;}
 </style>';
         }
 
@@ -1092,7 +1110,9 @@ alert((d&&d.message)||"Could not update task");
                 // Promos: full-width slot (do not squeeze card beside Ack/Dismiss — fixes client theme flex bugs)
                 $bodyTop = $isPromo ? '0' : '10px';
                 if ($isPromo) {
-                    $bodyHtml = '<div class="nb-promo-client-slot" style="margin-top:8px;font-size:14px;line-height:1.7;text-align:left;">'
+                    $promoSlotClass = 'nb-promo-client-slot' . ($area === 'client' ? ' nb-promo-client-slot--strip' : '');
+                    $promoSlotMt     = ($area === 'client') ? '0' : '8px';
+                    $bodyHtml = '<div class="' . $promoSlotClass . '" style="margin-top:' . $promoSlotMt . ';font-size:14px;line-height:1.7;text-align:left;">'
                         . $content . $btnHtml . $ticketHtml . $pollHtml
                         . $tagsHtml . $assignedHtml
                         . '</div>';
@@ -1133,18 +1153,22 @@ alert((d&&d.message)||"Could not update task");
                     . $ackBtn;
 
                 $bannerStyle = $isPromo
-                    ? ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:10px 12px;box-shadow:none;width:100%;max-width:100%;box-sizing:border-box;clear:both;overflow:visible;')
+                    ? ($area === 'client'
+                        ? ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:0;margin:0;box-shadow:none;width:100%;max-width:100%;box-sizing:border-box;clear:both;overflow:visible;')
+                        : ('color:' . $color . ';position:relative;z-index:99999;background:transparent;border:none;padding:10px 12px;box-shadow:none;width:100%;max-width:100%;box-sizing:border-box;clear:both;overflow:visible;'))
                     : ('background:' . $bg . ';border-left:4px solid ' . $accent . ';padding:12px 20px;'
                     . 'color:' . $color . ';position:relative;z-index:99999;box-shadow:0 2px 8px rgba(0,0,0,0.06);');
 
                 // Never hide promo body behind Expand — template card must always show on client
                 $useExpandable = !empty($n['expandable']) && empty($n['is_promotion_banner']);
 
+                $clientAttr = $area === 'client' ? ' class="nb-client-notice-bar"' : '';
+
                 if ($useExpandable) {
                     $expandBtn = '<button type="button" onclick="(function(b,c){var open=c.style.display!==\'none\';c.style.display=open?\'none\':\'block\';b.textContent=open?\'Expand\':\'Collapse\';})(this,document.getElementById(\'' . $id . '_body\'))" '
                         . 'style="padding:3px 14px;font-size:13px;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;font-weight:500;">Expand</button>';
                     $controls .= $expandBtn . $dismissBtn . '</div>';
-                    $html .= '<div id="' . $id . '" style="' . $bannerStyle . '">'
+                    $html .= '<div id="' . $id . '"' . $clientAttr . ' style="' . $bannerStyle . '">'
                         . '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
                         . $headerRow
                         . $controls
@@ -1153,16 +1177,32 @@ alert((d&&d.message)||"Could not update task");
                         . '</div>';
                 } elseif ($isPromo) {
                     $controls .= $dismissBtn . '</div>';
-                    $html .= '<div id="' . $id . '" class="nb-banner-promo-root" style="' . $bannerStyle . '">'
-                        . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;width:100%;box-sizing:border-box;">'
-                        . '<div style="flex:1;min-width:200px;">' . $headerRow . '</div>'
-                        . $controls
-                        . '</div>'
-                        . $bodyHtml
-                        . '</div>';
+                    if ($area === 'client') {
+                        // Single full-width strip: no separate "Promotion" header row (avoids double-band look)
+                        $promoTopBar = '<div style="position:absolute;top:10px;right:12px;z-index:30;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">'
+                            . $ackBtn . $dismissBtn . '</div>';
+                        $promoMeta = ($pinnedHtml !== '' || $tsHtml !== '')
+                            ? '<div style="position:absolute;top:10px;left:14px;z-index:29;display:flex;flex-wrap:wrap;gap:6px;align-items:center;max-width:52%;">'
+                            . $pinnedHtml . $tsHtml . '</div>'
+                            : '';
+                        $html .= '<div id="' . $id . '" class="nb-banner-promo-root nb-banner-promo--clientStrip" style="' . $bannerStyle . '">'
+                            . '<div style="position:relative;width:100%;min-height:48px;">'
+                            . $promoTopBar
+                            . $promoMeta
+                            . $bodyHtml
+                            . '</div></div>';
+                    } else {
+                        $html .= '<div id="' . $id . '" class="nb-banner-promo-root" style="' . $bannerStyle . '">'
+                            . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;width:100%;box-sizing:border-box;">'
+                            . '<div style="flex:1;min-width:200px;">' . $headerRow . '</div>'
+                            . $controls
+                            . '</div>'
+                            . $bodyHtml
+                            . '</div>';
+                    }
                 } else {
                     $controls .= $dismissBtn . '</div>';
-                    $html .= '<div id="' . $id . '" style="' . $bannerStyle . '">'
+                    $html .= '<div id="' . $id . '"' . $clientAttr . ' style="' . $bannerStyle . '">'
                         . '<div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:8px;">'
                         . '<div style="flex:1;min-width:0;">'
                         . $headerRow
@@ -1304,7 +1344,15 @@ function nbPollReset(btn,noticeId){
             $bannerTodoScript = $needsBannerTodoJs ? self::bannerTodoToggleScript() : '';
             $promoCopyScript  = !empty($needsPromoCopyJs) ? self::promotionCopyScript() : '';
 
-            return $stylePrefix . $html . $bannerTodoScript . $promoCopyScript;
+            $out = $stylePrefix . $html . $bannerTodoScript . $promoCopyScript;
+            if ($area === 'client' && $html !== '') {
+                $out = self::clientAreaBleedStyles()
+                    . '<div class="nb-noticebanner-bleed" role="region" aria-label="Announcements">'
+                    . $stylePrefix . $html . $bannerTodoScript . $promoCopyScript
+                    . '</div>';
+            }
+
+            return $out;
         }
     }
 }
