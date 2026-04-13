@@ -1878,6 +1878,8 @@ try {
                         if (!empty($kc['due_at'])) {
                             $dueStr = date('M j, Y', strtotime((string)$kc['due_at']));
                         }
+                        $ku = (isset($kc['urgency']) && in_array($kc['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $kc['urgency'] : 'normal';
+                        $kpc = $priorityConfig[$ku] ?? $priorityConfig['normal'];
                         ?>
                     <div class="nb-todo-card-v2<?php echo !empty($kc['is_completed']) ? ' nb-muted' : ''; ?>">
                         <div class="nb-todo-card-v2-head">
@@ -1887,12 +1889,15 @@ try {
                                 <?php endif; ?>
                                 <div class="nb-todo-card-v2-title<?php echo !empty($kc['is_completed']) ? ' done' : ''; ?>"><?php echo htmlspecialchars($kc['title'] ?? ''); ?></div>
                                 <div style="font-size:11px;color:#64748b;margin-top:4px;"><?php echo htmlspecialchars($boardTitle); ?></div>
-                                <?php if ($dueStr !== ''): ?>
-                                <span class="nb-todo-date-pill<?php
-                                $b = $kc['status_bucket'] ?? '';
-                                echo $b === 'overdue' ? ' overdue' : ($b === 'due_today' ? ' due-soon' : '');
-                                ?>" style="margin-top:6px;"><?php echo htmlspecialchars($dueStr); ?></span>
-                                <?php endif; ?>
+                                <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;">
+                                    <span class="nb-priority" style="font-size:10px;padding:1px 8px;color:<?php echo htmlspecialchars($kpc['color'], ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($kpc['bg'], ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($kpc['label']); ?></span>
+                                    <?php if ($dueStr !== ''): ?>
+                                    <span class="nb-todo-date-pill<?php
+                                    $b = $kc['status_bucket'] ?? '';
+                                    echo $b === 'overdue' ? ' overdue' : ($b === 'due_today' ? ' due-soon' : '');
+                                    ?>"><?php echo htmlspecialchars($dueStr); ?></span>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                         </div>
                         <div class="nb-todo-actions">
@@ -2126,15 +2131,14 @@ try {
                         $tw = isset($todo['title']) ? trim((string)$todo['title']) : '';
                         $sumTitle = $tw !== '' ? (function_exists('mb_strimwidth') ? mb_strimwidth($tw, 0, 72, '…', 'UTF-8') : substr($tw, 0, 70)) : 'Task';
                         $tu_display = (isset($todo['urgency']) && in_array($todo['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $todo['urgency'] : 'normal';
+                        $tu_pc = $priorityConfig[$tu_display] ?? $priorityConfig['normal'];
                         $subsOpen = count(array_filter($subs, static fn($x) => empty($x['is_completed'])));
                         $t_sel_ass = array_map('intval', $todo['assigned_admins'] ?? []);
                         ?>
                         <details class="nb-todo-flat-block nb-todo-task-fold">
                             <summary class="nb-todo-task-fold-sum">
                                 <span><?php echo htmlspecialchars($sumTitle); ?></span>
-                                <?php if ($tu_display !== 'normal'): ?>
-                                    <span class="nb-priority" style="color:<?php echo $priorityConfig[$tu_display]['color'] ?? '#2563eb'; ?>;background:<?php echo $priorityConfig[$tu_display]['bg'] ?? '#eff6ff'; ?>;"><?php echo htmlspecialchars($priorityConfig[$tu_display]['label'] ?? $tu_display); ?></span>
-                                <?php endif; ?>
+                                <span class="nb-priority" style="color:<?php echo htmlspecialchars($tu_pc['color'] ?? '#2563eb', ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($tu_pc['bg'] ?? '#eff6ff', ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($tu_pc['label'] ?? $tu_display); ?></span>
                                 <span class="nb-todo-assign-chips nb-todo-sum-assign-chips" aria-label="<?php echo !empty($t_sel_ass) ? 'Assigned admins' : ''; ?>"<?php echo empty($t_sel_ass) ? ' style="display:none;"' : ''; ?>>
                                     <?php foreach ($t_sel_ass as $taid): if ($taid <= 0) {
                                         continue;
@@ -2159,7 +2163,7 @@ try {
                                     </button>
                                 </form>
                                 <div class="nb-todo-flat-main">
-                                    <div class="nb-todo-flat-meta">Task</div>
+                                    <div class="nb-todo-flat-meta">Task <span class="nb-priority" style="font-size:10px;padding:1px 7px;margin-left:4px;color:<?php echo htmlspecialchars($tu_pc['color'] ?? '#2563eb', ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($tu_pc['bg'] ?? '#eff6ff', ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($tu_pc['label'] ?? $tu_display); ?></span></div>
                                     <div class="nb-todo-body-assign-row nb-todo-body-assign-chips"<?php echo empty($t_sel_ass) ? ' style="display:none;"' : ''; ?>>
                                         <?php if (!empty($t_sel_ass)): ?>
                                         <span class="nb-assign-lbl">Assigned</span>
@@ -2260,6 +2264,7 @@ try {
                             <?php
                             $sid = (int)$sub['id'];
                             $su_urg = (isset($sub['urgency']) && in_array($sub['urgency'], ['critical', 'high', 'normal', 'low'], true)) ? $sub['urgency'] : 'normal';
+                            $su_pc = $priorityConfig[$su_urg] ?? $priorityConfig['normal'];
                             $su_sel = array_map('intval', $sub['assigned_admins'] ?? []);
                             ?>
                             <div class="nb-todo-flat-row nb-todo-flat-sub">
@@ -2275,7 +2280,7 @@ try {
                                     </button>
                                 </form>
                                 <div class="nb-todo-flat-main">
-                                    <div class="nb-todo-flat-meta">Subtask</div>
+                                    <div class="nb-todo-flat-meta">Subtask <span class="nb-priority" style="font-size:10px;padding:1px 7px;margin-left:4px;color:<?php echo htmlspecialchars($su_pc['color'] ?? '#2563eb', ENT_QUOTES, 'UTF-8'); ?>;background:<?php echo htmlspecialchars($su_pc['bg'] ?? '#eff6ff', ENT_QUOTES, 'UTF-8'); ?>;"><?php echo htmlspecialchars($su_pc['label'] ?? $su_urg); ?></span></div>
                                     <div class="nb-todo-body-assign-row nb-todo-body-assign-chips"<?php echo empty($su_sel) ? ' style="display:none;"' : ''; ?>>
                                         <?php if (!empty($su_sel)): ?>
                                         <span class="nb-assign-lbl">Assigned</span>

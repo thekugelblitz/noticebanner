@@ -219,6 +219,12 @@ if (!class_exists('NoticeBannerHelper')) {
 .nb-todo-banner-rows-neutral .nb-todo-at{font-weight:700;color:inherit;background:rgba(15,23,42,0.08);border-radius:4px;padding:0 4px;}
 .nb-todo-banner-rows-neutral .nb-todo-urg-pill{background:rgba(15,23,42,0.08);color:inherit;}
 .nb-todo-urg-pill{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:0.04em;padding:2px 8px;border-radius:999px;background:rgba(15,23,42,0.07);color:rgba(15,23,42,0.75);}
+.nb-todo-urg--low{background:rgba(15,23,42,0.06);color:rgba(15,23,42,0.55);}
+.nb-todo-urg--normal{background:rgba(15,23,42,0.06);color:rgba(15,23,42,0.48);}
+.nb-todo-urg--high{background:rgba(249,115,22,0.18);color:#9a3412;}
+.nb-todo-urg--critical{background:rgba(220,38,38,0.2);color:#991b1b;}
+.nb-todo-banner-rows-neutral .nb-todo-urg--high{background:rgba(249,115,22,0.14);color:rgba(124,45,18,0.95);}
+.nb-todo-banner-rows-neutral .nb-todo-urg--critical{background:rgba(220,38,38,0.16);color:rgba(127,29,29,0.95);}
 .nb-todo-tag-pill{display:inline-flex;align-items:center;gap:1px;font-size:10px;font-weight:700;padding:2px 7px 2px 6px;border-radius:4px;background:#f1f5f9;color:#334155;border:1px solid #cbd5e1;margin-right:4px;box-shadow:0 1px 0 rgba(15,23,42,0.04);}
 .nb-todo-tag-pill .nb-todo-tag-prefix{font-weight:800;color:#64748b;margin-right:1px;}
 .nb-todo-assignee-pill{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;padding:2px 10px 2px 8px;border-radius:999px;background:linear-gradient(180deg,#ecfeff 0%,#cffafe 100%);color:#0f766e;border:1px solid #5eead4;margin-right:4px;white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis;box-shadow:0 1px 0 rgba(13,148,136,0.12);}
@@ -523,10 +529,8 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             if (!empty($task['due_at'])) {
                 $dueHtml = '<span class="nb-todo-due-pill">' . htmlspecialchars(date('M j, Y g:ia', strtotime($task['due_at'])), ENT_QUOTES, 'UTF-8') . '</span>';
             }
-            $urgHtml = '';
-            if ($urgency !== 'normal') {
-                $urgHtml = '<span class="nb-todo-urg-pill">' . htmlspecialchars(ucfirst($urgency), ENT_QUOTES, 'UTF-8') . '</span>';
-            }
+            $urgHtml = '<span class="nb-todo-urg-pill nb-todo-urg--' . htmlspecialchars($urgency, ENT_QUOTES, 'UTF-8') . '">'
+                . htmlspecialchars(ucfirst($urgency), ENT_QUOTES, 'UTF-8') . '</span>';
             $tagsHtml = '';
             $tagsRaw = trim((string)($task['tags'] ?? ''));
             if ($tagsRaw !== '') {
@@ -565,6 +569,9 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
             $btn = '<button type="button" class="nb-todo-banner-hit" onclick="nbBannerTodoToggle(this,' . $id . ')" title="Toggle done">' . $cbInner . '</button>';
             $d = min(4, $depth);
             $cls = 'nb-todo-row nb-todo-depth-' . $d . ($done ? ' nb-todo-row-done' : '');
+            $metaLineTagsAss = ($tagsHtml !== '' || $assHtml !== '')
+                ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $tagsHtml . $assHtml . '</div>'
+                : '';
             $metaLine = ($urgHtml !== '' || $tagsHtml !== '' || $assHtml !== '')
                 ? '<div class="nb-todo-row-line1" style="margin-top:2px;">' . $urgHtml . $tagsHtml . $assHtml . '</div>'
                 : '';
@@ -597,10 +604,11 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
                 $hint = $hasChildren
                     ? '<span class="nb-todo-banner-task-hint"> · ' . $childCount . ' sub' . ($childCount === 1 ? '' : 's') . '</span>'
                     : '';
-                $sumLine1 = '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml . $hint . '</div>';
+                $sumLine1 = '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $title . '</span>' . $dueHtml
+                    . $urgHtml . $hint . '</div>';
                 $sumRow = '<div class="' . $cls . ' nb-todo-banner-task-sum-row"' . $rowAttr . '>' . $btn
                     . '<div class="nb-todo-row-main">' . $sumLine1 . '</div></div>';
-                $bodyInner = $metaLine . $noteHtml . $subtasksFold;
+                $bodyInner = $metaLineTagsAss . $noteHtml . $subtasksFold;
                 $bodyBlock = $bodyInner !== ''
                     ? '<div class="' . $cls . ' nb-todo-banner-task-body-row"' . $rowAttr . '><div class="nb-todo-row-main">' . $bodyInner . '</div></div>'
                     : '';
