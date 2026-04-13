@@ -180,13 +180,15 @@ if (!class_exists('NoticeBannerHelper')) {
                         : '';
                     $depth = (int) ($b['depth'] ?? 0);
                     $cls = 'nb-todo-row nb-todo-depth-' . $depth . ($b['done'] ? ' nb-todo-row-done' : '');
-                    $html .= '<div class="' . $cls . '">' . $cb . '<div class="nb-todo-row-main">'
+                    $brOp = 0.42 + min(0.4, $depth * 0.1);
+                    $bracket = '<span class="nb-todo-bracket" style="color:rgba(15,23,42,' . $brOp . ');" aria-hidden="true">[</span>';
+                    $html .= '<div class="' . $cls . '">' . $bracket . $cb . '<div class="nb-todo-row-main">'
                         . '<div class="nb-todo-row-line1"><span class="nb-todo-row-text">' . $text . '</span>' . $due . '</div>'
                         . $noteHtml . '</div></div>';
                 }
             }
             $html .= '</div>';
-            return $html;
+            return self::wrapTodoBannerFold($html, $taskCount);
         }
 
         /** Inline CSS for To-Do checklist (injected once per page when a To-Do banner renders). */
@@ -358,7 +360,7 @@ navigator.clipboard.writeText(v).then(function(){var o=btn.textContent;btn.textC
 
         /** Wrap checklist in collapsed-by-default &lt;details&gt; (summary shows count + expand hint). */
         private static function wrapTodoBannerFold(string $innerBodyHtml, int $taskCount): string {
-            $hint = $taskCount === 1 ? '1 task' : $taskCount . ' tasks';
+            $hint = $taskCount === 0 ? 'Empty' : ($taskCount === 1 ? '1 task' : $taskCount . ' tasks');
             return '<details class="nb-todo-banner-fold">'
                 . '<summary class="nb-todo-banner-fold-sum"><span>Checklist</span> '
                 . '<span class="nb-todo-banner-fold-meta">' . htmlspecialchars($hint, ENT_QUOTES, 'UTF-8') . ' · Click to expand</span></summary>'
@@ -1114,6 +1116,14 @@ alert((d&&d.message)||"Could not update task");
                         . $pinnedHtml
                         . $tsHtml
                         . '</div>';
+
+                if (!empty($n['is_todo_banner']) && !$isPromo && empty($n['expandable'])) {
+                    $idJs = htmlspecialchars($id, ENT_QUOTES, 'UTF-8');
+                    $headerRow = '<div class="nb-todo-banner-head-toggle" role="button" tabindex="0" '
+                        . 'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}" '
+                        . 'onclick="var r=document.getElementById(\'' . $idJs . '\');if(!r)return;var d=r.querySelector(\'details.nb-todo-banner-fold\');if(d){d.open=!d.open;}" style="cursor:pointer;border-radius:8px;" title="Toggle checklist">'
+                        . $headerRow . '</div>';
+                }
 
                 $dismissBtn = '<button type="button" onclick="document.getElementById(\'' . $id . '\').style.display=\'none\'" '
                     . 'style="padding:3px 10px;font-size:16px;line-height:1;border-radius:5px;border:1px solid rgba(0,0,0,0.15);background:rgba(0,0,0,0.06);cursor:pointer;flex-shrink:0;" title="Dismiss">&times;</button>';
