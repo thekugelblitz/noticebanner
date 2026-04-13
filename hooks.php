@@ -283,7 +283,7 @@ details.nb-todo-banner-outer[open] .nb-todo-fold-hint-exp{display:none;}
 .nb-banner-promo--clientStrip .nb-promo-gradient,.nb-banner-promo--clientStrip .nb-promo-flash,.nb-banner-promo--clientStrip .nb-promo-neon,.nb-banner-promo--clientStrip .nb-promo-ribbon,.nb-banner-promo--clientStrip .nb-promo-minimal{box-shadow:none!important;}
 .nb-banner-promo--clientStrip .nb-promo-surface:not(.nb-promo--collapsible-unified){padding-top:52px!important;padding-left:clamp(16px,4vw,28px)!important;padding-right:clamp(16px,4vw,28px)!important;padding-bottom:22px!important;}
 .nb-promo--collapsible-unified{padding:0!important;overflow:hidden;position:relative;border-radius:0!important;}
-.nb-promo--collapsible-unified .nb-promo-collapse-head{background:transparent!important;box-shadow:none!important;border:none!important;margin:0!important;}
+.nb-promo--collapsible-unified .nb-promo-collapse-head{background:transparent!important;box-shadow:none!important;border:none!important;margin:0!important;cursor:pointer;}
 .nb-promo--collapsible-unified .nb-promo-expanded-panel{padding:4px clamp(16px,4vw,28px) 22px;box-sizing:border-box;}
 .nb-promo--collapsible-unified .nb-promo-expanded-panel .nb-promo-sub:first-child{margin-top:0;}
 .nb-promo-collapse-head{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;box-sizing:border-box;padding:14px clamp(16px,4vw,28px);min-height:48px;font-size:15px;font-weight:800;border-radius:0!important;box-shadow:none!important;}
@@ -1302,19 +1302,16 @@ alert((d&&d.message)||"Could not update task");
                         . '</div>';
                 } elseif ($isPromo) {
                     $controls .= $dismissBtn . '</div>';
-                    $promoCollapsible   = ($area === 'client' && !empty($n['promo_collapsible']));
-                    $promoStartExpanded = !empty($n['promo_start_expanded']);
+                    $promoCollapsible = ($area === 'client' && !empty($n['promo_collapsible']));
 
                     if ($area === 'client') {
                         if ($promoCollapsible) {
                             $p        = $promoCollapsibleUnifiedFrag;
                             $bodyId   = $id . '_body';
-                            $bodyDisp = $promoStartExpanded ? 'block' : 'none';
-                            $expLabel = $promoStartExpanded ? 'Collapse' : 'Expand';
-                            $expandBtn = '<button type="button" class="nb-promo-expand-toggle" onclick="(function(b,c){var o=c.style.display!==\'none\';c.style.display=o?\'none\':\'block\';b.textContent=o?\'Expand\':\'Collapse\';})(this,document.getElementById(\'' . $bodyId . '\'))" '
-                                . 'style="padding:5px 12px;font-size:12px;cursor:pointer;">'
-                                . htmlspecialchars($expLabel, ENT_QUOTES, 'UTF-8') . '</button>';
-                            $collapseHead = '<div class="nb-promo-collapse-head">'
+                            $bodyDisp = 'none';
+                            $expandBtn = '<button type="button" id="' . $id . '_expand_btn" class="nb-promo-expand-toggle" onclick="event.stopPropagation();nbPromoCollapseToggle(\'' . $id . '\');" '
+                                . 'style="padding:5px 12px;font-size:12px;cursor:pointer;">Expand</button>';
+                            $collapseHead = '<div class="nb-promo-collapse-head" id="' . $id . '_collapse_head" role="button" tabindex="0" aria-expanded="false" onclick="nbPromoCollapseToggle(\'' . $id . '\')" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();nbPromoCollapseToggle(\'' . $id . '\');}">'
                                 . '<span class="nb-promo-collapse-title">' . htmlspecialchars($n['notice_title'] ?? '', ENT_QUOTES, 'UTF-8') . '</span>'
                                 . '<div style="display:flex;gap:6px;align-items:center;flex-shrink:0;flex-wrap:wrap;">'
                                 . $expandBtn
@@ -1389,6 +1386,18 @@ alert((d&&d.message)||"Could not update task");
             if ($html !== '') {
                 // Inject JS helpers (acknowledge + poll vote) once per page
                 $html .= '<script>
+if(typeof nbPromoCollapseToggle==="undefined"){
+function nbPromoCollapseToggle(prefix){
+var body=document.getElementById(prefix+"_body");
+var btn=document.getElementById(prefix+"_expand_btn");
+var head=document.getElementById(prefix+"_collapse_head");
+if(!body)return;
+var wasOpen=body.style.display!=="none"&&body.style.display!=="";
+body.style.display=wasOpen?"none":"block";
+if(btn)btn.textContent=wasOpen?"Expand":"Collapse";
+if(head)head.setAttribute("aria-expanded",wasOpen?"false":"true");
+}
+}
 if(typeof nbAcknowledge==="undefined"){
 function nbAcknowledge(btn,noticeId,entityType,entityId){
     btn.disabled=true;

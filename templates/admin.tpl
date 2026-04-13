@@ -1576,13 +1576,7 @@ try {
                 <label class="nb-switch" style="margin-bottom:10px;">
                     <input type="checkbox" name="promo_collapsible" value="1" <?php echo !empty($pe['promo_collapsible']) ? 'checked' : ''; ?>>
                     <span class="nb-switch-track"></span>
-                    <span>Collapsible on client (compact title bar + Expand — saves vertical space)</span>
-                </label>
-                <label class="nb-switch">
-                    <input type="checkbox" name="promo_start_expanded" value="1" <?php echo !empty($pe['promo_start_expanded']) ? 'checked' : ''; ?>>
-                    <span class="nb-switch-track"></span>
-                    <span>Start expanded</span>
-                    <span style="font-size:12px;color:#64748b;font-weight:500;margin-left:6px;">(if unchecked, the full promo stays collapsed until the client clicks Expand)</span>
+                    <span>Collapsible on client (compact bar; clients tap the bar or Expand to open — always starts collapsed)</span>
                 </label>
             </div>
             <?php if ($isPro): ?>

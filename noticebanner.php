@@ -799,11 +799,8 @@ function noticebanner_build_payload(): array {
         $base['promo_coupon_code'] = substr($base['promo_coupon_code'], 0, 120);
     }
     $base['promo_template'] = $promoTpl;
-    $base['promo_collapsible']      = !empty($_POST['promo_collapsible']) ? 1 : 0;
-    $base['promo_start_expanded']   = !empty($_POST['promo_start_expanded']) ? 1 : 0;
-    if (empty($base['promo_collapsible'])) {
-        $base['promo_start_expanded'] = 0;
-    }
+    $base['promo_collapsible']    = !empty($_POST['promo_collapsible']) ? 1 : 0;
+    $base['promo_start_expanded'] = 0;
 
     // Pro-only fields — silently zeroed/nulled when not licensed
     $pro = $isPro ? [
