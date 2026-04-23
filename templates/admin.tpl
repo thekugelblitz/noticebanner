@@ -2824,6 +2824,20 @@ $licNextCheck  = $licenseStatus['next_check_after'] ?? null;
 $licLastError  = $licenseStatus['last_error'] ?? null;
 ?>
 
+<!-- Pro license: pricing + how to buy (https://2hs.in/nbm) -->
+<div class="nb-card" id="nb-license-cta" style="margin-bottom:20px;border:1px solid #c7d2fe;background:linear-gradient(135deg,#eef2ff 0%,#f8fafc 100%);">
+    <div class="nb-card-body" style="padding:18px 20px;">
+        <h3 style="margin:0 0 8px;font-size:16px;font-weight:800;color:#1e1b4b;">Pro license &amp; lifetime updates</h3>
+        <p style="margin:0 0 10px;font-size:14px;color:#475569;line-height:1.55;">
+            Visit the official page to learn <strong>how to get a license</strong>, what Pro includes, and how to use your key in this module.
+        </p>
+        <p style="margin:0 0 14px;font-size:15px;font-weight:700;color:#1e3a5f;">
+            <strong style="color:#0f172a;">$9</strong> <span style="font-weight:600;color:#64748b;">— one-time</span> · <em>lifetime updates</em>
+        </p>
+        <a href="https://2hs.in/nbm" target="_blank" rel="noopener noreferrer" class="nb-btn nb-btn-primary" style="display:inline-block;text-decoration:none;">Learn more &amp; get a license</a>
+    </div>
+</div>
+
 <!-- License key entry + status card -->
 <div class="nb-card">
     <div class="nb-card-header">
@@ -2917,7 +2931,7 @@ $licLastError  = $licenseStatus['last_error'] ?? null;
         <div style="padding:12px 0 4px;font-size:13px;color:#64748b;">
             No key entered — running in <strong>Free tier</strong>
             (<?php echo $activeCount; ?>/<?php echo $freeCap; ?> notices).
-            <a href="https://hostingspell.com" target="_blank" rel="noopener" style="color:#6366f1;font-weight:600;">Get a Pro license →</a>
+            <a href="https://2hs.in/nbm" target="_blank" rel="noopener noreferrer" style="color:#6366f1;font-weight:600;">Get a Pro license — $9, lifetime updates →</a>
         </div>
         <form method="post" style="margin-top:10px;">
             <button type="submit" name="nb_license_run_diagnostics" value="1" class="nb-btn nb-btn-ghost nb-btn-sm">🔧 Connection diagnostics</button>
