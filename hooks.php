@@ -10,7 +10,7 @@ require_once __DIR__ . '/widget.php';
 if (!defined('NOTICEBANNER_HOOKS_REGISTERED')) {
     define('NOTICEBANNER_HOOKS_REGISTERED', true);
 
-    // ─── Poll vote + Acknowledge endpoints — intercept POST on ANY page ──────────
+    // POST: poll votes, acknowledgements, to-do (ClientArea + AdminArea)
     add_hook('ClientAreaPage', 1, function ($vars) {
         NoticeBannerHelper::handleAcknowledgePost('client');
         NoticeBannerHelper::handlePollVotePost();
@@ -21,26 +21,26 @@ if (!defined('NOTICEBANNER_HOOKS_REGISTERED')) {
         NoticeBannerHelper::handlePollVotePost();
     });
 
-    // ─── Hook registrations ───────────────────────────────────────────────────────
+    // Hook registrations
 
     add_hook('ClientAreaHeaderOutput', 1, function ($vars) {
         return NoticeBannerHelper::renderNotices('client');
     });
 
-    // Single admin hook — avoids running the renderer 3× per request (Head/Footer/Header)
+    // Admin: single header output hook (avoids rendering multiple times)
     add_hook('AdminAreaHeaderOutput', 1, function ($vars) {
         return NoticeBannerHelper::renderNotices('admin');
     });
 }
 
-// ─── Renderer ────────────────────────────────────────────────────────────────
+// Renderer
 
 if (!class_exists('NoticeBannerHelper')) {
     class NoticeBannerHelper {
 
         private static $rendered = [];
 
-        // ── Minimal Markdown → HTML ──────────────────────────────────────────
+        // Minimal Markdown → HTML
         public static function parseMarkdown(string $text): string {
             $t = htmlspecialchars($text, ENT_QUOTES, 'UTF-8');
 
@@ -656,7 +656,7 @@ alert((d&&d.message)||"Could not update task");
 </script>';
         }
 
-        // ── Priority badge ───────────────────────────────────────────────────
+        // Priority badge
         private static function priorityBadge(string $priority): string {
             $map = [
                 'critical' => ['#dc2626', '#fff', '🔴 Critical'],
@@ -684,7 +684,7 @@ alert((d&&d.message)||"Could not update task");
             return sprintf('#%02x%02x%02x', max(0, min(255, $r2)), max(0, min(255, $g2)), max(0, min(255, $b2)));
         }
 
-        // ── Get current admin ID ─────────────────────────────────────────────
+        // Get current admin ID
         private static function currentAdminId(): int {
             if (!empty($_SESSION['adminid'])) return (int)$_SESSION['adminid'];
             if (class_exists('\WHMCS\Authentication\CurrentUser')) {
@@ -696,13 +696,13 @@ alert((d&&d.message)||"Could not update task");
             return 0;
         }
 
-        // ── Get current client ID ────────────────────────────────────────────
+        // Get current client ID
         private static function currentClientId(): int {
             if (!empty($_SESSION['uid'])) return (int)$_SESSION['uid'];
             return 0;
         }
 
-        // ── Get current client's group ID ────────────────────────────────────
+        // Get current client's group ID
         private static function currentClientGroupId(): int {
             $uid = self::currentClientId();
             if (!$uid) return 0;
@@ -716,7 +716,7 @@ alert((d&&d.message)||"Could not update task");
             }
         }
 
-        // ── Get server IDs the current client has active services on ─────────
+        // Get server IDs the current client has active services on
         private static function currentClientServerIds(): array {
             $uid = self::currentClientId();
             if (!$uid) return [];
@@ -736,7 +736,7 @@ alert((d&&d.message)||"Could not update task");
             }
         }
 
-        // ── Get product IDs the current client has active services for ───────
+        // Get product IDs the current client has active services for
         private static function currentClientProductIds(): array {
             $uid = self::currentClientId();
             if (!$uid) return [];
@@ -754,7 +754,7 @@ alert((d&&d.message)||"Could not update task");
             }
         }
 
-        // ── Resolve admin names from IDs ─────────────────────────────────────
+        // Resolve admin names from IDs
         private static function adminNames(array $ids): array {
             if (empty($ids)) return [];
             try {
@@ -772,7 +772,7 @@ alert((d&&d.message)||"Could not update task");
             }
         }
 
-        // ── Handle poll vote POST on any page (called from hook, exits with JSON) ──
+        // Handle poll vote POST on any page (called from hook, exits with JSON)
         public static function handlePollVotePost(): void {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST') return;
             if (!noticebanner_license_is_pro()) {
@@ -784,7 +784,7 @@ alert((d&&d.message)||"Could not update task");
                 return;
             }
 
-            // ── Reset own vote ──────────────────────────────────────────────
+            // Reset own vote
             if (!empty($_POST['nb_poll_reset_vote'])) {
                 $nid        = (int)($_POST['poll_notice_id'] ?? 0);
                 $isAdmin    = !empty($_SESSION['adminid']);
@@ -829,7 +829,7 @@ alert((d&&d.message)||"Could not update task");
 
             if (empty($_POST['nb_poll_vote'])) return;
 
-            // ── Cast vote ───────────────────────────────────────────────────
+            // Cast vote
             $nid  = (int)($_POST['poll_notice_id'] ?? 0);
             $vote = html_entity_decode($_POST['poll_vote'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8');
 
@@ -907,7 +907,7 @@ alert((d&&d.message)||"Could not update task");
             exit;
         }
 
-        // ── Handle acknowledge POST on any page (called from hook, exits with JSON) ──
+        // Handle acknowledge POST on any page (called from hook, exits with JSON)
         /** Toggle To-Do from live admin banner (any admin page, AJAX). */
         public static function handleBannerTodoPost(): void {
             if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_POST['nb_banner_todo_toggle'])) {
@@ -962,7 +962,7 @@ alert((d&&d.message)||"Could not update task");
             exit;
         }
 
-        // ── Check if entity has already voted on a poll (non-predefined only) ──
+        // Check if entity has already voted on a poll (non-predefined only)
         private static function hasVoted(int $noticeId, string $type, int $entityId): bool {
             if (!$entityId) return false;
             try {
@@ -975,7 +975,7 @@ alert((d&&d.message)||"Could not update task");
             } catch (\Exception $e) { return false; }
         }
 
-        // ── Get the option the entity voted for (null if not voted) ──────────
+        // Get the option the entity voted for (null if not voted)
         private static function getVotedOption(int $noticeId, string $type, int $entityId): ?string {
             if (!$entityId) return null;
             try {
@@ -990,7 +990,7 @@ alert((d&&d.message)||"Could not update task");
             } catch (\Exception $e) { return null; }
         }
 
-        // ── Check if entity has already acknowledged a notice ────────────────
+        // Check if entity has already acknowledged a notice
         private static function hasAcknowledged(int $noticeId, string $type, int $entityId): bool {
             if (!$entityId) return false;
             try {
@@ -1004,7 +1004,7 @@ alert((d&&d.message)||"Could not update task");
             }
         }
 
-        // ── Main render ──────────────────────────────────────────────────────
+        // Main render
         public static function renderNotices(string $area): string {
             if (!empty(self::$rendered[$area])) return '';
             self::$rendered[$area] = true;
@@ -1027,14 +1027,14 @@ alert((d&&d.message)||"Could not update task");
             $needsBannerTodoJs = false;
             $needsPromoCopyJs = false;
             foreach ($notices as $n) {
-                // ── Audience gate ──
+                // Audience gate
                 $show = ($area === 'admin' && !empty($n['show_to_admins']))
                      || ($area === 'client' && !empty($n['show_to_clients']));
                 if (!$show) continue;
 
                 $assignedAdmins = array_map('intval', (array)($n['assigned_admins'] ?? []));
 
-                // ── Client group gate ──
+                // Client group gate
                 $clientGroups = $n['client_groups'] ?? [];
                 if ($area === 'client' && !empty($clientGroups)) {
                     if ($currentGroupId === 0 || !in_array($currentGroupId, $clientGroups, true)) {
@@ -1042,7 +1042,7 @@ alert((d&&d.message)||"Could not update task");
                     }
                 }
 
-                // ── Page slug gate (client only) ──
+                // Page slug gate (client only)
                 $pageSlugs = $n['page_slugs'] ?? [];
                 if ($area === 'client' && !empty($pageSlugs)) {
                     $matched = false;
@@ -1055,7 +1055,7 @@ alert((d&&d.message)||"Could not update task");
                     if (!$matched) continue;
                 }
 
-                // ── Specific client gate ──
+                // Specific client gate
                 $targetClients = $n['target_clients'] ?? [];
                 if ($area === 'client' && !empty($targetClients)) {
                     if ($currentClientId === 0 || !in_array($currentClientId, $targetClients, true)) {
@@ -1063,7 +1063,7 @@ alert((d&&d.message)||"Could not update task");
                     }
                 }
 
-                // ── Specific server gate (client must have an active service on one of these servers) ──
+                // Specific server gate (client must have an active service on one of these servers)
                 $targetServers = $n['target_servers'] ?? [];
                 if ($area === 'client' && !empty($targetServers)) {
                     if (empty(array_intersect($targetServers, $clientServerIds))) {
@@ -1071,7 +1071,7 @@ alert((d&&d.message)||"Could not update task");
                     }
                 }
 
-                // ── Specific product gate (client must have an active service for one of these products) ──
+                // Specific product gate (client must have an active service for one of these products)
                 $targetProducts = $n['target_products'] ?? [];
                 if ($area === 'client' && !empty($targetProducts)) {
                     if (empty(array_intersect($targetProducts, $clientProductIds))) {
@@ -1122,12 +1122,12 @@ alert((d&&d.message)||"Could not update task");
                     $content = self::parseMarkdown($n['notice_content'] ?? '');
                 }
 
-                // ── Pinned indicator (Pro) ──
+                // Pinned indicator (Pro)
                 $pinnedHtml = ($isPro && !empty($n['is_pinned']))
                     ? '<span style="display:inline-block;padding:1px 7px;border-radius:12px;font-size:10px;font-weight:700;background:#fef9c3;color:#854d0e;margin-left:6px;vertical-align:middle;">📌 Pinned</span>'
                     : '';
 
-                // ── Timestamp ──
+                // Timestamp
                 $tsHtml = '';
                 if (!empty($n['notice_timestamp'])) {
                     $tsHtml = '<span style="font-size:12px;opacity:0.6;margin-left:10px;font-weight:400;">'
@@ -1135,7 +1135,7 @@ alert((d&&d.message)||"Could not update task");
                         . '</span>';
                 }
 
-                // ── Tags (Pro) — not on To-Do banners (checklist carries task tags; avoids duplicate #chips like #todo) ──
+                // Tags (Pro; hidden on To-Do banners)
                 $tagsHtml = '';
                 if ($isPro && !empty($n['tags']) && empty($n['is_todo_banner'])) {
                     $tagsHtml = '<div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:4px;">';
@@ -1146,7 +1146,7 @@ alert((d&&d.message)||"Could not update task");
                     $tagsHtml .= '</div>';
                 }
 
-                // ── Assigned admins footer (not on To-Do banners — collapsed summary covers assignees) ──
+                // Assigned admins (not on To-Do banners; summary in header)
                 $assignedHtml = '';
                 if ($area === 'admin' && !empty($assignedAdmins) && empty($n['is_todo_banner'])) {
                     $nameMap = self::adminNames($assignedAdmins);
@@ -1162,7 +1162,7 @@ alert((d&&d.message)||"Could not update task");
                         . '</div>';
                 }
 
-                // ── Acknowledge (Pro) or Manage Tasks (admin To-Do banner → task manager) ──
+                // Acknowledge (Pro) or Manage Tasks (admin To-Do banner → task manager)
                 $ackBtn = '';
                 $entityId   = ($area === 'admin') ? $currentAdminId : $currentClientId;
                 $entityType = $area === 'admin' ? 'admin' : 'client';
@@ -1190,7 +1190,7 @@ alert((d&&d.message)||"Could not update task");
                     }
                 }
 
-                // ── CTA button (Pro) — skipped for promotion banners (CTA is inside the promo card) ──
+                // CTA button (Pro) — skipped for promotion banners (CTA is inside the promo card)
                 $btnHtml = '';
                 if (!$isPromo && $isPro && !empty($n['button_enabled']) && !empty($n['button_text']) && !empty($n['button_link'])) {
                     $target  = !empty($n['button_newtab']) ? ' target="_blank" rel="noopener noreferrer"' : '';
@@ -1202,7 +1202,7 @@ alert((d&&d.message)||"Could not update task");
                         . htmlspecialchars($n['button_text']) . '</a>';
                 }
 
-                // ── Ticket button (Pro) ──
+                // Ticket button (Pro)
                 $ticketHtml = '';
                 if ($isPro && !empty($n['ticket_enabled']) && !empty($n['ticket_department_id'])) {
                     $deptId  = urlencode($n['ticket_department_id'] ?? '');
@@ -1219,7 +1219,7 @@ alert((d&&d.message)||"Could not update task");
                         . $btnTxt . '</a>';
                 }
 
-                // ── Poll (Pro) ──
+                // Poll (Pro)
                 $pollHtml = '';
                 if ($isPro && !empty($n['poll_enabled']) && !empty($n['poll_question']) && !empty($n['poll_options'])) {
                     $results    = $n['poll_results'] ?? [];
@@ -1297,13 +1297,13 @@ alert((d&&d.message)||"Could not update task");
 
                 $todoOuterCollapse = !empty($n['is_todo_banner']) && !$isPromo && empty($n['expandable']);
 
-                // ── Body ──
-                // Promos: full-width slot (do not squeeze card beside Ack/Dismiss — fixes client theme flex bugs)
+                // Body
+                // Promos: full-width block
                 $bodyTop = $isPromo ? '0' : '10px';
                 if ($isPromo) {
                     $promoSlotClass = 'nb-promo-client-slot' . ($area === 'client' ? ' nb-promo-client-slot--strip' : '');
                     $promoSlotMt     = ($area === 'client') ? '0' : '8px';
-                    // Tags render inside .nb-promo-surface — do not append $tagsHtml here
+                    // Tags are inside the promo card markup
                     if ($promoCollapsibleClient && $promoCollapsibleUnifiedFrag !== null) {
                         $bodyHtml = '';
                     } else {
@@ -1320,7 +1320,7 @@ alert((d&&d.message)||"Could not update task");
                         . '</div>';
                 }
 
-                // ── Banner wrapper ──
+                // Banner wrapper
                 $todoTitleCompact = !empty($n['is_todo_banner']) && !$isPromo;
                 $headerRow = $isPromo
                     ? '<div style="display:flex;align-items:center;flex-wrap:wrap;gap:8px;">'

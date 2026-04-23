@@ -1,39 +1,34 @@
 <?php
 /**
- * Notice Banner — License Engine
- *
- * License key is stored in mod_noticebanner_license (not in tbladdonmodules).
- * free_max_notices comes from the API response per-key (not editable by customer).
- *
- * Remote endpoint: https://whmcsapi.hostingspell.com/noticebanner-license-api/validate.php
+ * Notice Banner: remote license validation and local cache.
+ * License key: mod_noticebanner_license. Free-tier limits: API response.
  */
 
 if (!defined('WHMCS')) {
     die('Access Denied');
 }
 
-// Optional: copy noticebanner-license-url.example.php → noticebanner-license-url.php
-// and set a URL that bypasses Cloudflare (e.g. DNS-only subdomain pointing at origin).
+// Optional: noticebanner-license-url.php in this directory for NB_LICENSE_API_URL / SSL options if the default API is unreachable.
 $__nbLicUrlFile = __DIR__ . '/noticebanner-license-url.php';
 if (is_file($__nbLicUrlFile)) {
     require_once $__nbLicUrlFile;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// Constants
 
 define('NB_LICENSE_PRODUCT',     'noticebanner-whmcs');
 if (!defined('NB_LICENSE_API_URL')) {
     define('NB_LICENSE_API_URL', 'https://whmcsapi.hostingspell.com/noticebanner-license-api/validate.php');
 }
-// Optional in noticebanner-license-url.php: define('NB_LICENSE_SSL_VERIFY_PEER', false);
+// In noticebanner-license-url.php: NB_LICENSE_SSL_VERIFY_PEER (optional).
 if (!defined('NB_LICENSE_SSL_VERIFY_PEER')) {
     define('NB_LICENSE_SSL_VERIFY_PEER', true);
 }
-define('NB_LICENSE_CACHE_HOURS', 24);  // re-check every 24 h
-define('NB_LICENSE_GRACE_HOURS', 72);  // keep Pro for 72 h if API unreachable
-define('NB_LICENSE_FREE_CAP',    3);   // default free cap if API hasn't responded yet
+define('NB_LICENSE_CACHE_HOURS', 24);
+define('NB_LICENSE_GRACE_HOURS', 72);
+define('NB_LICENSE_FREE_CAP',    3);
 
-// ─── Cache table ──────────────────────────────────────────────────────────────
+// Cache table
 
 if (!function_exists('noticebanner_license_ensure_table')) {
 function noticebanner_license_ensure_table(): void {
@@ -46,11 +41,11 @@ function noticebanner_license_ensure_table(): void {
             $schema->create('mod_noticebanner_license', function ($t) {
                 $t->increments('id');
                 $t->string('cache_key', 64)->unique();
-                $t->string('license_key_stored', 100)->default(''); // key entered by admin
+                $t->string('license_key_stored', 100)->default('');
                 $t->string('status', 30)->default('unknown');
                 $t->string('plan', 20)->default('free');
                 $t->string('issued_to', 200)->default('');
-                $t->integer('free_max_notices')->default(NB_LICENSE_FREE_CAP); // set by API
+                $t->integer('free_max_notices')->default(NB_LICENSE_FREE_CAP);
                 $t->timestamp('license_expires_at')->nullable();
                 $t->timestamp('last_ok_at')->nullable();
                 $t->timestamp('next_check_after')->nullable();
@@ -80,7 +75,7 @@ function noticebanner_license_ensure_table(): void {
 }
 }
 
-// ─── Key storage (in our own table, not tbladdonmodules) ──────────────────────
+// mod_noticebanner_license: license key
 
 if (!function_exists('noticebanner_license_get_key')) {
 function noticebanner_license_get_key(): string {
@@ -105,7 +100,7 @@ function noticebanner_license_save_key(string $key): void {
 }
 }
 
-// ─── Settings helper (only for non-sensitive settings still in tbladdonmodules) ─
+// tbladdonmodules: non-key addon settings
 
 if (!function_exists('noticebanner_license_get_setting')) {
 function noticebanner_license_get_setting(string $setting, $default = '') {
@@ -119,7 +114,7 @@ function noticebanner_license_get_setting(string $setting, $default = '') {
 }
 }
 
-// ─── Domain normalisation ─────────────────────────────────────────────────────
+// License domain (from SystemURL host)
 
 if (!function_exists('noticebanner_license_domain')) {
 function noticebanner_license_domain(): string {
@@ -136,7 +131,7 @@ function noticebanner_license_domain(): string {
 }
 }
 
-// ─── Cache read / write ───────────────────────────────────────────────────────
+// Cache read / write
 
 if (!function_exists('noticebanner_license_read_cache')) {
 function noticebanner_license_read_cache(): ?object {
@@ -163,7 +158,7 @@ function noticebanner_license_write_cache(array $data): void {
 }
 }
 
-// ─── HTTP POST (cURL preferred — many hosts disable allow_url_fopen for URLs) ─
+// HTTPS POST: prefer cURL; allow_url_fopen may be disabled
 
 if (!function_exists('noticebanner_license_is_cloudflare_challenge')) {
 function noticebanner_license_is_cloudflare_challenge(string $raw, int $httpCode): bool {
@@ -299,10 +294,10 @@ function noticebanner_license_http_post_json(string $url, array $payload): array
             $out['raw'] = $r['raw'];
         }
 
-        // Cloudflare "Just a moment…" interstitial — retry once with browser-like UA (helps some configs; JS challenges still need CF bypass).
+        // HTML challenge from proxy: retry with a browser User-Agent
         if ($out['raw'] !== '' && noticebanner_license_is_cloudflare_challenge($out['raw'], $out['http_code'])) {
             $out['cloudflare_hint'] = 'Cloudflare bot/challenge page detected (not valid JSON). '
-                . 'Allow this path in Cloudflare or use a DNS-only API hostname — see noticebanner-license-url.example.php and CLOUDFLARE.txt on the license server.';
+                . 'Allow this path in Cloudflare, use a DNS-only API hostname, or define NB_LICENSE_API_URL in noticebanner-license-url.php in this module folder.';
             $r2 = noticebanner_license_curl_post_json($url, $body, $uaBrowser);
             if (!empty($r2['ssl_verify_relaxed'])) {
                 $out['ssl_note'] = 'TLS peer verification was skipped for this request (self-signed / untrusted cert on the license API host, or NB_LICENSE_SSL_VERIFY_PEER is false). Prefer Let’s Encrypt on whmcsapi.hostingspell.com.';
@@ -318,7 +313,7 @@ function noticebanner_license_http_post_json(string $url, array $payload): array
                     $out['error']       = '';
                     $out['cloudflare_hint'] = '';
                 } else {
-                    $out['retry_note'] = 'Retried with browser User-Agent; still not JSON (configure Cloudflare bypass — see CLOUDFLARE.txt).';
+                    $out['retry_note'] = 'Retried with browser User-Agent; still not JSON (allow the license path in Cloudflare or set NB_LICENSE_API_URL in noticebanner-license-url.php).';
                     $out['raw']        = $r2['raw'];
                     $out['http_code']  = $r2['http_code'];
                 }
@@ -406,7 +401,7 @@ function noticebanner_license_debug_format(array $dbg): string {
 }
 }
 
-// ─── Remote call ──────────────────────────────────────────────────────────────
+// Remote call
 
 if (!function_exists('noticebanner_license_remote_validate')) {
 function noticebanner_license_remote_validate(string $licenseKey, string $domain): ?array {
@@ -448,7 +443,7 @@ function noticebanner_license_run_connection_diagnostics(): string {
 }
 }
 
-// ─── Refresh logic ────────────────────────────────────────────────────────────
+// Refresh logic
 
 if (!function_exists('noticebanner_license_refresh')) {
 function noticebanner_license_refresh(bool $force = false): void {
@@ -474,7 +469,7 @@ function noticebanner_license_refresh(bool $force = false): void {
     if (!$force) {
         $cache = noticebanner_license_read_cache();
         if ($cache && $cache->next_check_after && strtotime($cache->next_check_after) > time()) {
-            return; // Still fresh
+            return;
         }
     }
 
@@ -484,7 +479,7 @@ function noticebanner_license_refresh(bool $force = false): void {
     $now = date('Y-m-d H:i:s');
 
     if ($payload === null) {
-        // Network failure — keep last known good within grace window
+        // License API unreachable: keep last valid result within grace period
         $cache      = noticebanner_license_read_cache();
         $graceUntil = ($cache && $cache->last_ok_at)
             ? date('Y-m-d H:i:s', strtotime($cache->last_ok_at) + NB_LICENSE_GRACE_HOURS * 3600)
@@ -537,7 +532,7 @@ function noticebanner_license_refresh(bool $force = false): void {
 }
 }
 
-// ─── Public gate ──────────────────────────────────────────────────────────────
+// Public gate
 
 if (!function_exists('noticebanner_license_is_pro')) {
 function noticebanner_license_is_pro(): bool {
@@ -573,7 +568,7 @@ function noticebanner_license_status(): array {
 }
 }
 
-// ─── Free-tier cap (set by API per key, not editable by customer) ─────────────
+// Free-tier notice cap (from API)
 
 if (!function_exists('noticebanner_free_notice_cap')) {
 function noticebanner_free_notice_cap(): int {
@@ -593,7 +588,7 @@ function noticebanner_free_cap_reached(): bool {
 }
 }
 
-// ─── Daily cron ───────────────────────────────────────────────────────────────
+// Daily cron
 
 add_hook('DailyCronJob', 1, function () {
     if (function_exists('noticebanner_license_refresh')) {

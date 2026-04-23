@@ -1,16 +1,15 @@
 # Notice Banner (WHMCS)
 
-**Version:** 3.1.0
-
-Display admin and client notices as banners with markdown, polls, @mentions, assignments, scheduling, webhooks, and more.
-
+**Version:** 3.1.0  
 **Author:** Dhruv from HostingSpell
+
+Display **admin and client** notices as **banners** with **markdown-style** content, **polls**, **@mentions**, **assignments**, **scheduling**, **webhooks**, **to-do / promo** workflows, a **dashboard widget**, and more.
 
 ## Requirements
 
-- A supported **WHMCS** install with **PHP** matching your server (match WHMCS’s PHP requirements, e.g. 8.1+ where applicable).
-- **MySQL/MariaDB** (module creates and uses `mod_*` tables).
-- **Outbound HTTPS** to the license validation API (see *Licensing*). Firewalls and hosts must allow that connection.
+- A supported **WHMCS** release and a matching **PHP** version (follow WHMCS’s own requirements).
+- **MySQL** or **MariaDB** (the module uses its own `mod_*` tables).
+- **Outbound HTTPS (port 443)** from your server to the **license API** (see *Licensing*). Firewalls and hosts must allow this.
 
 ## Installation
 
@@ -18,46 +17,41 @@ Display admin and client notices as banners with markdown, polls, @mentions, ass
 
    `modules/addons/noticebanner/`
 
-2. Ensure the directory layout is intact, including:
+2. In **Admin → System Settings → Addon Modules**, open **Notice Banner** and **Activate**.  
+   Activation creates/updates the module database tables.
 
-   | Path | Role |
-   |------|------|
-   | `noticebanner.php` | Addon entry, admin UI, API |
-   | `hooks.php` | Client/admin hooks (load via *Activate* — see below) |
-   | `widget.php` | Admin home dashboard widget |
-   | `license.php` | License engine |
-   | `templates/admin.tpl` | Admin template (must stay plain text if you use IonCube; see `IONCUBE.txt`) |
-   | `storage/` | Runtime uploads (e.g. to-do attachments; keep writable by the web user) |
+3. The module uses **`storage/`** for uploads (e.g. to-do attachments). It is **created automatically** when needed. Ensure the **web user** can write under the module directory.
 
-3. In **WHMCS Admin → System Settings → Addon Modules**, find **Notice Banner**, configure if needed, then **Activate** (this creates/updates the module’s database tables).
+4. When **active**, WHMCS loads **`hooks.php`** (client and admin area output) and **`widget.php`** (admin home widget).
 
-4. When the module is **active**, WHMCS loads **`hooks.php`** for client and admin area hooks, and the dashboard widget is provided by **`widget.php`**. If banners or hooks do not appear after an upgrade, clear cache, confirm the module is still active, and see WHMCS documentation for your version.
+| File / folder        | Role |
+|---------------------|------|
+| `noticebanner.php`  | Addon entry, admin UI, handling |
+| `hooks.php`         | Hooks for client/admin banners |
+| `widget.php`        | Admin dashboard widget |
+| `license.php`      | License validation |
+| `templates/admin.tpl` | Admin interface template |
+| `storage/`         | Created at runtime (uploads) |
 
-5. (Optional) **Global Webhook URL** in module settings: POSTs JSON when notices are created or updated (Slack, Discord, or custom endpoints).
+## Using the module
 
-## Admin usage
+- **Admin:** **Addon Modules → Notice Banner** for full configuration.
+- **Admin home:** the **Notice Banner** widget (requires **Addon Modules** permission) for a quick list and actions.
+- **Client area / admin area:** Notices are shown via hooks, according to each notice’s rules (audience, schedule, page targeting, etc.).
 
-- **Addon Modules → Notice Banner** — full management UI.
-- **Admin Dashboard** — **Notice Banner** widget (requires **Addon Modules** permission) for a compact overview and quick actions.
+**Optional (module settings):** **Global Webhook URL** — sends JSON to your URL when a notice is created or updated (e.g. Slack, Discord, custom endpoint).
 
-## Client area
+## Free and Pro
 
-Notices are injected via hooks into the client area and admin area according to your notice rules (client visibility, pages, schedule, etc.).
+The module includes a **Free** tier and a **Pro** license (extra features, higher limits). For pricing, lifetime updates, and how to get a key, use the in-module **License** tab or the official information page: **<https://2hs.in/nbm>**
 
-## Storage
+Enter your license key under **License & Settings** in the Notice Banner admin screen.
 
-`storage/` should be writable. It is used for generated/uploaded data (e.g. under `storage/todo_attachments/`). Only `storage/.gitignore` is versioned by default; runtime files are not meant to be committed.
+## Licensing (technical)
 
-## Licensing
-
-`license.php` performs validation over **HTTPS**. Default endpoint and network notes are documented in **`IONCUBE.txt`** (outbound access, optional URL override, Cloudflare caveats).
-
-To override the license API URL, copy **`noticebanner-license-url.example.php`** to **`noticebanner-license-url.php`** in the same folder as `noticebanner.php` and set `NB_LICENSE_API_URL` (see the example file).
-
-## Distributors: IonCube
-
-If you ship encoded copies, read **`IONCUBE.txt`** for which files to encode, which to leave plain, PHP version matching, and customer loader requirements.
+- The module validates the license over **HTTPS**. If your server **cannot** reach the default API (for example, strict **proxy/Cloudflare** rules), you may need to allow the license path, use a **DNS-only** host for the API, or add an optional file **`noticebanner-license-url.php`** in the same folder as `noticebanner.php` and define **`NB_LICENSE_API_URL`** (and, only if your host requires it, **`NB_LICENSE_SSL_VERIFY_PEER`**).  
+  Contact support if you need help with this on locked-down servers.
 
 ## Support
 
-For HostingSpell product support, use the channels provided with your license or purchase.
+Use the support channel provided with your purchase or on the product page (e.g. **<https://2hs.in/nbm>** for ordering and product details).

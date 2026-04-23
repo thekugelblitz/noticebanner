@@ -1,7 +1,5 @@
 <?php
-/**
- * Notice Banner – WHMCS Admin Dashboard Widget
- */
+/** Admin home dashboard widget. */
 
 if (!defined('WHMCS')) {
     die('Access Denied');
@@ -30,7 +28,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         'low'      => ['#6b7280', '#f3f4f6'],
     ];
 
-    // ── Fetch all notices ────────────────────────────────────────────────────
+    // Fetch all notices
     public function getData() {
         if (function_exists('noticebanner_ensure_table')) {
             noticebanner_ensure_table();
@@ -108,7 +106,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         ];
     }
 
-    // ── Resolve admin names ──────────────────────────────────────────────────
+    // Resolve admin names
     private function adminNames(array $ids): array {
         if (empty($ids)) return [];
         try {
@@ -120,7 +118,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         } catch (\Exception $e) { return []; }
     }
 
-    // ── Handle POSTs ─────────────────────────────────────────────────────────
+    // Handle POSTs
     private function handlePost(): void {
         if ($_SERVER['REQUEST_METHOD'] !== 'POST' || !isset($_POST['nb_widget_action'])) return;
 
@@ -131,7 +129,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         $id     = (int)($_POST['nb_id'] ?? 0);
 
         try {
-            // ── Toggle admins/clients independently ──
+            // Toggle admins/clients independently
             if ($action === 'toggle_admins' && $id > 0) {
                 $row = Capsule::table('mod_noticebanner')->where('id', $id)->first();
                 if ($row) {
@@ -200,7 +198,7 @@ class NoticeBannerWidget extends \WHMCS\Module\AbstractWidget {
         } catch (\Exception $e) {}
     }
 
-    // ── Render ───────────────────────────────────────────────────────────────
+    // Render
     public function generateOutput($data) {
         $this->handlePost();
         $data    = $this->getData();
@@ -528,8 +526,7 @@ function nbwCollapse(id) {
     document.getElementById(id+'-full').style.display  = 'none';
     document.getElementById(id+'-short').style.display = 'block';
 }
-// Walk up the DOM from our widget and remove any overflow/height constraints
-// imposed by the WHMCS theme on widget containers.
+// Theme widgets often clip; walk parents and set overflow/height to visible/auto.
 function nbwUnclip() {
     var el = document.getElementById('nb-widget-wrap');
     if (!el) return;

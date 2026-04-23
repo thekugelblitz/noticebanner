@@ -3,10 +3,10 @@ if (!defined('WHMCS')) {
     die('Access Denied');
 }
 
-// ─── License engine ──────────────────────────────────────────────────────────
+// License engine
 require_once __DIR__ . '/license.php';
 
-// ─── Config ──────────────────────────────────────────────────────────────────
+// Config
 
 if (!function_exists('noticebanner_config')) {
 function noticebanner_config() {
@@ -27,7 +27,7 @@ function noticebanner_config() {
 }
 }
 
-// ─── Activate / Deactivate ───────────────────────────────────────────────────
+// Activate / Deactivate
 
 if (!function_exists('noticebanner_activate')) {
 function noticebanner_activate() {
@@ -43,7 +43,7 @@ function noticebanner_deactivate() {
 }
 }
 
-// ─── Table bootstrap ─────────────────────────────────────────────────────────
+// Table bootstrap
 
 if (!function_exists('noticebanner_ensure_table')) {
 function noticebanner_ensure_table() {
@@ -82,7 +82,7 @@ function noticebanner_ensure_table() {
                 $table->string('priority', 20)->default('normal');
                 $table->datetime('notice_timestamp')->nullable();
                 $table->integer('sort_order')->default(0);
-                // v3 columns
+                // Extended fields (expiry, tags, to-do, etc.)
                 $table->datetime('expires_at')->nullable();
                 $table->string('tags', 500)->default('');
                 $table->text('client_groups')->nullable();
@@ -97,7 +97,7 @@ function noticebanner_ensure_table() {
             });
         }
 
-        // Migrate legacy data.txt if present
+        // Import from legacy data.txt (one-time)
         $legacyFile = __DIR__ . '/data.txt';
         if (file_exists($legacyFile)) {
             $legacy = json_decode(file_get_contents($legacyFile), true);
@@ -144,7 +144,7 @@ function noticebanner_ensure_table() {
 }
 }
 
-// ─── Column migration (idempotent — adds new v3 columns to existing tables) ──
+// Add missing DB columns for upgrades
 
 if (!function_exists('noticebanner_ensure_columns')) {
 function noticebanner_ensure_columns() {
@@ -154,7 +154,7 @@ function noticebanner_ensure_columns() {
     try {
         $schema = \WHMCS\Database\Capsule::schema();
 
-        // v3 columns on mod_noticebanner
+        // mod_noticebanner: optional columns
         $schema->table('mod_noticebanner', function ($table) use ($schema) {
             if (!$schema->hasColumn('mod_noticebanner', 'expires_at'))
                 $table->datetime('expires_at')->nullable()->after('sort_order');
@@ -176,7 +176,7 @@ function noticebanner_ensure_columns() {
                 $table->tinyInteger('is_pinned')->default(0)->after('page_slugs');
             if (!$schema->hasColumn('mod_noticebanner', 'is_todo_banner'))
                 $table->tinyInteger('is_todo_banner')->default(0)->after('is_pinned');
-            // v3.1 — granular targeting
+            // Targeting / rules tables
             if (!$schema->hasColumn('mod_noticebanner', 'target_clients'))
                 $table->text('target_clients')->nullable()->after('is_todo_banner');
             if (!$schema->hasColumn('mod_noticebanner', 'target_servers'))
@@ -317,7 +317,7 @@ function noticebanner_ensure_columns() {
 }
 }
 
-// ─── Audit log helper ─────────────────────────────────────────────────────────
+// Audit log helper
 
 if (!function_exists('noticebanner_log')) {
 function noticebanner_log($noticeId, string $action, string $detail = '') {
@@ -334,7 +334,7 @@ function noticebanner_log($noticeId, string $action, string $detail = '') {
 }
 }
 
-// ─── Webhook URL safety (blocks SSRF to internal networks) ───────────────────
+// Webhook URL allowlist (SSRF mitigation)
 
 if (!function_exists('noticebanner_is_safe_webhook_url')) {
 function noticebanner_is_safe_webhook_url(string $url): bool {
@@ -354,7 +354,7 @@ function noticebanner_is_safe_webhook_url(string $url): bool {
 }
 }
 
-// ─── Validate poll vote string against a notice row ──────────────────────────
+// Validate poll vote string against a notice row
 
 if (!function_exists('noticebanner_poll_vote_is_valid')) {
 function noticebanner_poll_vote_is_valid($row, string $vote): bool {
@@ -369,7 +369,7 @@ function noticebanner_poll_vote_is_valid($row, string $vote): bool {
 }
 }
 
-// ─── Webhook helper ───────────────────────────────────────────────────────────
+// Webhook helper
 
 if (!function_exists('noticebanner_fire_webhook')) {
 function noticebanner_fire_webhook(array $notice, string $event) {
@@ -412,7 +412,7 @@ function noticebanner_fire_webhook(array $notice, string $event) {
 }
 }
 
-// ─── DB Helpers ──────────────────────────────────────────────────────────────
+// DB Helpers
 
 if (!function_exists('noticebanner_get_notices')) {
 function noticebanner_get_notices(bool $forRendering = false) {
@@ -662,13 +662,10 @@ function noticebanner_get_admins() {
 
 if (!function_exists('noticebanner_get_departments')) {
 function noticebanner_get_departments() {
-    // WHMCS table name varies by version:
-    //   tblticketdepartments  — modern WHMCS (v7+)
-    //   tblsupportdepts       — older versions
-    //   tblsupportdepartments — some forks/older installs
+    // Try per-WHMCS department table name
     foreach (['tblticketdepartments', 'tblsupportdepts', 'tblsupportdepartments'] as $tbl) {
         try {
-            // Plain fetch first — confirms table exists and has rows
+            // Confirm table and rows
             $rows = \WHMCS\Database\Capsule::table($tbl)
                 ->get(['id', 'name'])
                 ->toArray();
@@ -770,7 +767,7 @@ function noticebanner_get_clients_by_ids(array $ids): array {
 }
 }
 
-// ─── Build save payload from POST ────────────────────────────────────────────
+// Build save payload from POST
 
 if (!function_exists('noticebanner_build_payload')) {
 function noticebanner_build_payload(): array {
@@ -828,7 +825,7 @@ function noticebanner_build_payload(): array {
     $base['promo_collapsible']    = !empty($_POST['promo_collapsible']) ? 1 : 0;
     $base['promo_start_expanded'] = 0;
 
-    // Pro-only fields — silently zeroed/nulled when not licensed
+    // Pro fields (stripped for Free)
     $pro = $isPro ? [
         'button_enabled'       => isset($_POST['button_enabled']) ? 1 : 0,
         'button_text'          => $_POST['button_text'] ?? '',
@@ -2134,7 +2131,7 @@ function noticebanner_run_todos_csv_export(int $adminId, array $kanbanFilters): 
 }
 }
 
-// ─── Admin Output ────────────────────────────────────────────────────────────
+// Admin Output
 
 if (!function_exists('noticebanner_output')) {
 function noticebanner_output($vars) {
@@ -2145,7 +2142,7 @@ function noticebanner_output($vars) {
 
     $currentAdminOut = !empty($_SESSION['adminid']) ? (int)$_SESSION['adminid'] : 0;
 
-    // ── To-Do CSV export (same filters as Kanban toolbar) ──
+    // To-Do CSV export (same filters as Kanban toolbar)
     if (!empty($_GET['nb_todo_export']) && $_GET['nb_todo_export'] === 'csv' && $currentAdminOut > 0) {
         $todoBannerRange = trim((string)($_GET['todo_banner_range'] ?? '3m'));
         $kanbanRange = in_array($todoBannerRange, ['3m', '6m', 'all'], true) ? $todoBannerRange : '3m';
@@ -2161,7 +2158,7 @@ function noticebanner_output($vars) {
         noticebanner_run_todos_csv_export($currentAdminOut, $kanbanFilters);
     }
 
-    // ── Task attachment download (session + permission) ──
+    // Task attachment download (session + permission)
     if (!empty($_GET['nb_todo_attachment'])) {
         $attId = (int)$_GET['nb_todo_attachment'];
         if ($attId <= 0 || $currentAdminOut <= 0) {
@@ -2210,7 +2207,7 @@ function noticebanner_output($vars) {
         }
     }
 
-    // ── Export poll votes: ?nb_export_votes=<id>&format=csv|json (Pro) ──
+    // Export poll votes: ?nb_export_votes=<id>&format=csv|json (Pro)
     if (!empty($_GET['nb_export_votes'])) {
         if (!noticebanner_license_is_pro()) {
             header('HTTP/1.1 403 Forbidden');
@@ -2233,7 +2230,7 @@ function noticebanner_output($vars) {
         $filename = 'poll-votes-' . $nid . '-' . preg_replace('/[^a-z0-9._-]+/i', '', $slug);
 
         if ($format === 'json') {
-            // ── JSON export ──
+            // JSON export
             $export = [
                 'notice_id'    => $nid,
                 'question'     => $question,
@@ -2265,7 +2262,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── CSV export (default) ──
+        // CSV export (default)
         header('Content-Type: text/csv; charset=UTF-8');
         header('Content-Disposition: attachment; filename="' . $filename . '.csv"');
         // UTF-8 BOM so Excel opens it correctly
@@ -2366,7 +2363,7 @@ function noticebanner_output($vars) {
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
-        // ── Client search (AJAX) ──
+        // Client search (AJAX)
         if (isset($_POST['nb_client_search'])) {
             header('Content-Type: application/json');
             $results = noticebanner_search_clients($_POST['nb_client_search'] ?? '');
@@ -2382,7 +2379,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── To-Do actions (admin only) ──
+        // To-Do actions (admin only)
         if (isset($_POST['nb_todo_action'])) {
             $action = trim((string)$_POST['nb_todo_action']);
             $isAjax = !empty($_POST['nb_todo_ajax']);
@@ -2894,7 +2891,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Poll vote (legacy non-AJAX fallback — real votes now go via hook) ──
+        // Poll vote (non-AJAX POST fallback)
         if (isset($_POST['poll_vote'], $_POST['poll_notice_id']) && empty($_POST['nb_poll_vote'])) {
             $nid  = (int)$_POST['poll_notice_id'];
             $vote = $_POST['poll_vote'];
@@ -2912,7 +2909,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Predefined votes (admin only, Pro) ────────────────────────────────
+        // Predefined votes (admin only, Pro)
         // Form sends parallel arrays: predefined_poll_option_hex[] + predefined_poll_add_counts[]
         if (isset($_POST['predefined_poll_vote'], $_POST['predefined_poll_notice_id'])) {
             if (!noticebanner_license_is_pro()) {
@@ -2998,7 +2995,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Delete single vote record (admin only) ──
+        // Delete single vote record (admin only)
         if (isset($_POST['delete_poll_vote'], $_POST['delete_poll_vote_id'])) {
             $vid = (int)$_POST['delete_poll_vote_id'];
             $nid = (int)($_POST['delete_poll_notice_id'] ?? 0);
@@ -3028,7 +3025,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Reset poll results (admin only) ──
+        // Reset poll results (admin only)
         if (isset($_POST['reset_poll'], $_POST['reset_poll_id'])) {
             $nid = (int)$_POST['reset_poll_id'];
             if ($nid) {
@@ -3043,7 +3040,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Mark read (supports both AJAX fetch and normal POST) ──
+        // Mark read (supports both AJAX fetch and normal POST)
         if (isset($_POST['mark_read'], $_POST['mark_read_id'])) {
             $nid  = (int)$_POST['mark_read_id'];
             $type = $_POST['mark_read_type'] ?? 'admin';
@@ -3071,7 +3068,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Remove acknowledgement ──
+        // Remove acknowledgement
         if (isset($_POST['remove_ack'])) {
             $nid  = (int)($_POST['remove_ack_id'] ?? 0);
             $type = $_POST['remove_ack_type'] ?? 'admin';
@@ -3090,7 +3087,7 @@ function noticebanner_output($vars) {
             exit;
         }
 
-        // ── Add predefined acknowledgement (Pro) ──
+        // Add predefined acknowledgement (Pro)
         if (isset($_POST['add_predefined_ack'])) {
             if (!noticebanner_license_is_pro()) {
                 $message = '<div class="nb-alert nb-alert-danger">&#128274; Predefined acknowledgements require a Pro license.</div>';
@@ -3114,7 +3111,7 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── Save notice (add or edit) ──
+        // Save notice (add or edit)
         if (isset($_POST['create_todo_banner'])) {
             $title = trim((string)($_POST['todo_banner_title'] ?? ''));
             $content = trim((string)($_POST['todo_banner_content'] ?? ''));
@@ -3251,7 +3248,7 @@ function noticebanner_output($vars) {
                 }
             }
         }
-        // ── Save notice (add or edit) ──
+        // Save notice (add or edit)
         if (isset($_POST['save_notice']) || isset($_POST['save_promotion'])) {
             $payload = noticebanner_build_payload();
             $editId  = (int)($_POST['edit_id'] ?? 0);
@@ -3292,7 +3289,7 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── Save as template (Pro) ──
+        // Save as template (Pro)
         elseif (isset($_POST['save_as_template'])) {
             if (!noticebanner_license_is_pro()) {
                 $message = '<div class="nb-alert nb-alert-danger">&#128274; Templates require a Pro license.</div>';
@@ -3317,7 +3314,7 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── Clone notice (Pro) ──
+        // Clone notice (Pro)
         elseif (isset($_POST['clone_notice'])) {
             if (!noticebanner_license_is_pro()) {
                 $message = '<div class="nb-alert nb-alert-danger">&#128274; Cloning notices requires a Pro license.</div>';
@@ -3343,7 +3340,7 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── Delete ──
+        // Delete
         elseif (isset($_POST['delete_notice'])) {
             $id = (int)$_POST['delete_notice'];
             $tr = trim((string)($_POST['todo_banner_range'] ?? '3m'));
@@ -3372,7 +3369,7 @@ function noticebanner_output($vars) {
             } catch (\Exception $e) {}
         }
 
-        // ── Toggle visibility ──
+        // Toggle visibility
         elseif (isset($_POST['toggle_show'])) {
             $id  = (int)$_POST['toggle_show'];
             $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
@@ -3387,7 +3384,7 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── Reorder ──
+        // Reorder
         elseif (isset($_POST['move_up']) || isset($_POST['move_down'])) {
             $id        = (int)($_POST['move_up'] ?? $_POST['move_down']);
             $direction = isset($_POST['move_up']) ? 'up' : 'down';
@@ -3406,7 +3403,7 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── Load edit ──
+        // Load edit
         elseif (isset($_POST['edit_load'])) {
             $id  = (int)$_POST['edit_load'];
             $row = \WHMCS\Database\Capsule::table('mod_noticebanner')->where('id', $id)->first();
@@ -3426,7 +3423,7 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── License: save key ──
+        // License: save key
         if (isset($_POST['nb_license_save_key'])) {
             $newKey = trim($_POST['nb_license_key_input'] ?? '');
             noticebanner_license_save_key($newKey);
@@ -3444,7 +3441,7 @@ function noticebanner_output($vars) {
             goto nb_post_end;
         }
 
-        // ── License: validate now (re-check existing key) ──
+        // License: validate now (re-check existing key)
         if (isset($_POST['nb_license_validate_now'])) {
             noticebanner_license_refresh(true);
             $licStatus = noticebanner_license_status();
@@ -3456,7 +3453,7 @@ function noticebanner_output($vars) {
             }
         }
 
-        // ── License: connection diagnostics (no key required) ──
+        // License: connection diagnostics (no key required)
         if (isset($_POST['nb_license_run_diagnostics'])) {
             $licenseDiagnosticsOutput = htmlspecialchars(
                 noticebanner_license_run_connection_diagnostics(),
